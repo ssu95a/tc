@@ -1,0 +1,57 @@
+package ru.inversion.tc.jdbc.event;
+
+import java.util.EventObject;
+
+public class JdbcEvent extends EventObject {
+
+   private final EventType type;
+   private final EventPhase phase;
+
+   private final long timestampNanos;
+
+   private final Throwable throwable;
+
+   /** */
+   public JdbcEvent( Object source, EventType type, EventPhase phase )
+   {
+      this(source, type, phase, null);
+   }
+
+   /** */
+   public JdbcEvent( Object source, EventType type, EventPhase phase, Throwable throwable )
+   {
+      super(source);
+
+      if(type == null)
+         throw new IllegalArgumentException("type is null");
+
+      if(phase == null)
+         throw new IllegalArgumentException("phase is null");
+
+      this.source    = source;
+      this.type      = type;
+      this.phase     = phase;
+      this.throwable = throwable;
+
+      this.timestampNanos = System.nanoTime();
+   }
+
+   /** */
+   public EventType getType() {
+      return type;
+   }
+
+   /** */
+   public EventPhase getPhase() {
+      return phase;
+   }
+
+   public long getTimestampNanos() {
+      return timestampNanos;
+   }
+
+   /** */
+   public Throwable getThrowable() {
+      return throwable;
+   }
+}
