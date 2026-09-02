@@ -82,6 +82,6 @@ public final class JdbcEventBus
    @SuppressWarnings({ "rawtypes", "unchecked" })
    private static void fire( IListenerManConsumer<JdbcEventListener<?>> man, JdbcEvent event )
    {
-      man.fire( listener -> ((JdbcEventListener) listener) .onJdbcEvent(event));
+      man.fire( listener -> ((JdbcEventListener) listener).onJdbcEvent(event));
    }
 }

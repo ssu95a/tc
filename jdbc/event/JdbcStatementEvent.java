@@ -61,7 +61,7 @@ public final class JdbcStatementEvent extends JdbcEvent
    }
 
 
-   public long getDuration()
+   public long getDurationNanos()
    {
       return durationNanos;
    }
