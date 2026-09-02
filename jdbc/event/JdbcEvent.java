@@ -28,7 +28,6 @@ public class JdbcEvent extends EventObject {
       if(phase == null)
          throw new IllegalArgumentException("phase is null");
 
-      this.source    = source;
       this.type      = type;
       this.phase     = phase;
       this.throwable = throwable;
