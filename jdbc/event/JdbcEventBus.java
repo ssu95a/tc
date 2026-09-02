@@ -3,12 +3,12 @@ package ru.inversion.tc.jdbc.event;
 import ru.inversion.utils.lstn.IListenerManConsumer;
 import ru.inversion.utils.lstn.ListenerManFactory;
 
-import java.util.HashMap;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** */
-public final class JdbcEventBusImpl
+public final class JdbcEventBus
 {
    private final Map< Class<? extends JdbcEvent>, IListenerManConsumer<JdbcEventListener<?>>> listenerMap = new ConcurrentHashMap<>();
 
@@ -37,7 +37,7 @@ public final class JdbcEventBusImpl
       IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.get(eventClass);
 
       if( man == null )
-         return;
+          return;
 
       man.removeListener(listener);
 
@@ -48,10 +48,7 @@ public final class JdbcEventBusImpl
 
    public boolean isEmpty()
    {
-      synchronized( this )
-      {
-         return listenerMap.isEmpty();
-      }
+      return listenerMap.isEmpty();
    }
 
 
@@ -70,22 +67,21 @@ public final class JdbcEventBusImpl
    }
 
 
-   @SuppressWarnings({
-           "rawtypes",
-           "unchecked"
-   })
+   /** */
    private void fireForClass( JdbcEvent event, Class<? extends JdbcEvent> eventClass )
    {
-      IListenerManConsumer<JdbcEventListener<?>> man;
-
-      synchronized( this )
-      {
-         man = listenerMap.get(eventClass);
-      }
-
+      IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.get(eventClass);
       if( man == null )
-          return;
+         return;
 
-      man.fire(listener ->((JdbcEventListener) listener).onJdbcEvent(event));
+      fire(man, event);
+   }
+
+
+   /** */
+   @SuppressWarnings({ "rawtypes", "unchecked" })
+   private static void fire( IListenerManConsumer<JdbcEventListener<?>> man, JdbcEvent event )
+   {
+      man.fire( listener -> ((JdbcEventListener) listener) .onJdbcEvent(event));
    }
 }
