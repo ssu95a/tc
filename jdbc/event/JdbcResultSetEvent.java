@@ -8,71 +8,80 @@ public final class JdbcResultSetEvent extends JdbcEvent
 
    private final int openResultSetCount;
 
+   private JdbcResultSetEvent (
+        Object source,
 
-   private JdbcResultSetEvent(
-           Object source,
-           EventType type,
-           long resultSetId,
-           long statementId,
-           int openResultSetCount
+        long connectionId,
+        long statementId,
+        long resultSetId,
+
+        EventType type,
+
+        int openResultSetCount
    )
    {
-      super(source, type, EventPhase.ON);
+      super( source, connectionId, type, EventPhase.ON );
 
-      if( resultSetId <= 0 )
-         throw new IllegalArgumentException("resultSetId <= 0");
+      if( connectionId <= 0 )
+         throw new IllegalArgumentException("statementId <= 0");
 
       if( statementId <= 0 )
-         throw new IllegalArgumentException("statementId <= 0");
+          throw new IllegalArgumentException("statementId <= 0");
+
+      if( resultSetId <= 0 )
+          throw new IllegalArgumentException("resultSetId <= 0");
 
       if( openResultSetCount < 0 )
          throw new IllegalArgumentException("openResultSetCount < 0");
 
-      this.resultSetId       = resultSetId;
-      this.statementId       = statementId;
-      this.openResultSetCount = openResultSetCount;
+      this.resultSetId = resultSetId;
+      this.statementId = statementId;
+
+      this.openResultSetCount
+                       = openResultSetCount;
    }
 
-
-   public long getResultSetId()
+   public long resultSetId()
    {
       return resultSetId;
    }
 
-
-   public long getStatementId()
+   public long statementId()
    {
       return statementId;
    }
 
-
-   public int getOpenResultSetCount()
+   public int openResultSetCount()
    {
       return openResultSetCount;
    }
 
-
    /** */
-   public static JdbcResultSetEvent open( Object source, long resultSetId, long statementId, int openResultSetCount )
+   public static JdbcResultSetEvent open( Object source, long connectionId, long statementId, long resultSetId, int openResultSetCount )
    {
-      return new JdbcResultSetEvent( source, EventType.RESULT_SET_OPEN, resultSetId, statementId, openResultSetCount );
+      return new JdbcResultSetEvent(
+         source,
+         connectionId, resultSetId, statementId,
+         EventType.RESULT_SET_OPEN,
+         openResultSetCount
+      );
    }
 
 
    /** */
    public static JdbcResultSetEvent close(
            Object source,
+           long connectionId,
            long resultSetId,
            long statementId,
            int openResultSetCount
    )
    {
       return new JdbcResultSetEvent(
-              source,
-              EventType.RESULT_SET_CLOSE,
-              resultSetId,
-              statementId,
-              openResultSetCount
+         source,
+         connectionId, resultSetId, statementId,
+         EventType.RESULT_SET_CLOSE,
+         openResultSetCount
       );
    }
 }

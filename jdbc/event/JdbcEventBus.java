@@ -15,7 +15,7 @@ public final class JdbcEventBus
    public synchronized <E extends JdbcEvent> void addListener( Class<E> eventClass, JdbcEventListener<? super E> listener )
    {
       if( eventClass == null || listener == null )
-         return;
+          return;
 
       IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.get(eventClass);
 
