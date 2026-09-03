@@ -98,6 +98,7 @@ public final class JdbcObjectId
    public static final class Generator
    {
       private static final AtomicLong CONNECTION_SEQUENCE = new AtomicLong();
+      
       private final AtomicLong objectSequence = new AtomicLong();
 
       private final long connectionId;
@@ -107,7 +108,7 @@ public final class JdbcObjectId
          connectionId = create( EventObj.CONNECTION, CONNECTION_SEQUENCE.incrementAndGet() );
       }
 
-      public long getConnectionId()
+      public long nextConnectionId()
       {
          return connectionId;
       }

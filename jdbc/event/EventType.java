@@ -20,6 +20,7 @@ public enum EventType {
    SAVEPOINT_ROLLBACK,
 
    WARNING,
+
    NOTICE,
 
    DBMS_OUTPUT

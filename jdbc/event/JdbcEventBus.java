@@ -3,15 +3,16 @@ package ru.inversion.tc.jdbc.event;
 import ru.inversion.utils.lstn.IListenerManConsumer;
 import ru.inversion.utils.lstn.ListenerManFactory;
 
-
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** */
 public final class JdbcEventBus
 {
-   private final Map< Class<? extends JdbcEvent>, IListenerManConsumer<JdbcEventListener<?>>> listenerMap = new ConcurrentHashMap<>();
+   private final Map< Class<? extends JdbcEvent>, IListenerManConsumer<JdbcEventListener<?>>>
+      listenerMap = new ConcurrentHashMap<>();
 
+   /** */
    public synchronized <E extends JdbcEvent> void addListener( Class<E> eventClass, JdbcEventListener<? super E> listener )
    {
       if( eventClass == null || listener == null )
@@ -28,7 +29,7 @@ public final class JdbcEventBus
       man.addListener(listener);
    }
 
-
+   /** */
    public synchronized <E extends JdbcEvent> void removeListener( Class<E> eventClass, JdbcEventListener<? super E> listener )
    {
       if( eventClass == null || listener == null )
