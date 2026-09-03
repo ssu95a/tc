@@ -127,7 +127,7 @@ public final class JdbcStatementEvent extends JdbcEvent
       String sql,
       Map<Integer, Object> inParameters,
       Map<Integer, Object> outParameters,
-      long duration
+      long durationNanos
    )
    {
       return new JdbcStatementEvent(
@@ -139,7 +139,7 @@ public final class JdbcStatementEvent extends JdbcEvent
               sql,
               inParameters,
               outParameters,
-              duration,
+              durationNanos,
               null
       );
    }
@@ -155,7 +155,7 @@ public final class JdbcStatementEvent extends JdbcEvent
       String methodName,
       String sql,
       Map<Integer, Object> inParameters,
-      long duration,
+      long durationNanos,
       Throwable throwable
    )
    {
@@ -168,7 +168,7 @@ public final class JdbcStatementEvent extends JdbcEvent
            sql,
            inParameters,
            null,
-           duration,
+           durationNanos,
            throwable
       );
    }

@@ -1,7 +1,6 @@
 package ru.inversion.tc.jdbc.internal;
 
-import ru.inversion.tc.jdbc.event.EventObj;
-
+import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /** */
@@ -11,9 +10,49 @@ public final class JdbcObjectId
 
    private static final long SEQUENCE_MASK  = 0x00FFFFFFFFFFFFFFL;
 
-//   private static final int TYPE_CONNECTION = 1;
-//   private static final int TYPE_STATEMENT  = 2;
-//   private static final int TYPE_RESULT_SET = 3;
+   private enum ObjectType {
+
+      CONNECTION,
+      STATEMENT,
+      RESULT_SET,
+      APPLICATION,
+      JDBC;
+
+      public int typeCode()
+      {
+         switch ( this ) {
+            case CONNECTION:
+               return 1;
+            case STATEMENT:
+               return 2;
+            case RESULT_SET:
+               return 3;
+            case APPLICATION:
+               return 4;
+            case JDBC:
+               return 5;
+         }
+         return 0;
+      }
+
+      /** */
+      public static ObjectType fromTypeCode(int code )
+      {
+         switch ( code ) {
+            case 1:
+               return CONNECTION;
+            case 2:
+               return STATEMENT;
+            case 3:
+               return RESULT_SET;
+            case 4:
+               return APPLICATION;
+            case 5:
+               return JDBC;
+         }
+         throw new NoSuchElementException("No elem 'ObjectType' with typeCode " + code);
+      }
+   }
 
    /** */
    private JdbcObjectId()
@@ -26,30 +65,18 @@ public final class JdbcObjectId
    }
 
    /** */
-   public static boolean isConnection( long id ) { return getType(id) == EventObj.CONNECTION; }
+   public static boolean isConnection( long id ) { return getType(id) == ObjectType.CONNECTION; }
 
    /** */
    public static boolean isStatement( long id )
    {
-      return getType(id) == EventObj.STATEMENT;
+      return getType(id) == ObjectType.STATEMENT;
    }
 
    /** */
    public static boolean isResultSet( long id )
    {
-      return getType(id) == EventObj.RESULT_SET;
-   }
-
-   /** */
-   public static boolean isApplication( long id )
-   {
-      return getType(id) == EventObj.APPLICATION;
-   }
-
-   /** */
-   public static boolean isJdbc( long id )
-   {
-      return getType(id) == EventObj.JDBC;
+      return getType(id) == ObjectType.RESULT_SET;
    }
 
    /** */
@@ -80,7 +107,7 @@ public final class JdbcObjectId
    }
 
    /** */
-   private static long create( EventObj obj, long sequence )
+   private static long create( ObjectType obj, long sequence )
    {
       if( sequence <= 0 || sequence > SEQUENCE_MASK )
           throw new IllegalArgumentException( "Invalid JDBC object sequence: " + sequence );
@@ -89,38 +116,38 @@ public final class JdbcObjectId
    }
 
    /** */
-   private static EventObj getType( long id )
+   private static ObjectType getType( long id )
    {
-      return EventObj.fromTypeCode((int) ((id >>> TYPE_SHIFT) & 0xFF));
+      return ObjectType.fromTypeCode((int) ((id >>> TYPE_SHIFT) & 0xFF));
    }
 
    /** */
    public static final class Generator
    {
       private static final AtomicLong CONNECTION_SEQUENCE = new AtomicLong();
-      
+
       private final AtomicLong objectSequence = new AtomicLong();
 
       private final long connectionId;
 
       public Generator()
       {
-         connectionId = create( EventObj.CONNECTION, CONNECTION_SEQUENCE.incrementAndGet() );
+         connectionId = create( ObjectType.CONNECTION, CONNECTION_SEQUENCE.incrementAndGet() );
       }
 
-      public long nextConnectionId()
+      public long connectionId()
       {
          return connectionId;
       }
 
       public long nextStatementId()
       {
-         return create( EventObj.STATEMENT, objectSequence.incrementAndGet() );
+         return create( ObjectType.STATEMENT, objectSequence.incrementAndGet() );
       }
 
       public long nextResultSetId()
       {
-         return create( EventObj.RESULT_SET, objectSequence.incrementAndGet() );
+         return create( ObjectType.RESULT_SET, objectSequence.incrementAndGet() );
       }
    }
 }

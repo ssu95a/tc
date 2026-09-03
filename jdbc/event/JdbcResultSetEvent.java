@@ -22,9 +22,6 @@ public final class JdbcResultSetEvent extends JdbcEvent
    {
       super( source, connectionId, type, EventPhase.ON );
 
-      if( connectionId <= 0 )
-         throw new IllegalArgumentException("statementId <= 0");
-
       if( statementId <= 0 )
           throw new IllegalArgumentException("statementId <= 0");
 
@@ -61,7 +58,7 @@ public final class JdbcResultSetEvent extends JdbcEvent
    {
       return new JdbcResultSetEvent(
          source,
-         connectionId, resultSetId, statementId,
+         connectionId, statementId, resultSetId,
          EventType.RESULT_SET_OPEN,
          openResultSetCount
       );
@@ -79,7 +76,7 @@ public final class JdbcResultSetEvent extends JdbcEvent
    {
       return new JdbcResultSetEvent(
          source,
-         connectionId, resultSetId, statementId,
+         connectionId, statementId, resultSetId,
          EventType.RESULT_SET_CLOSE,
          openResultSetCount
       );
