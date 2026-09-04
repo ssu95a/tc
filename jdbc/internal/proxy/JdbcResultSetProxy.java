@@ -1,7 +1,9 @@
 package ru.inversion.tc.jdbc.internal.proxy;
 
+import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.event.JdbcResultSetEvent;
+import ru.inversion.tc.jdbc.internal.JdbcObjectId;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 
 import java.lang.reflect.InvocationHandler;
@@ -10,22 +12,33 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 
-/** */
-public final class JdbcResultSetProxy implements InvocationHandler
+
+/**
+ * Proxy только для Statement-owned cursor ResultSet.
+ *
+ * Не предназначен для:
+ * - Statement.getGeneratedKeys()
+ * - Array.getResultSet()
+ * - DatabaseMetaData ResultSet
+ * - прочих служебных JDBC ResultSet
+ */
+public final class JdbcResultSetProxy
+        implements InvocationHandler
 {
-
    private final ResultSet resultSet;
 
    /*
-    * Именно proxy Statement.
-    * getStatement() не должен выпускать наружу raw Statement.
+    * Owner Statement handler.
+    *
+    * Нужен:
+    * - для getStatement() -> proxy Statement
+    * - для удаления себя из owner cache
+    * - для closeOnCompletion synchronization
     */
-   private final Statement statement;
+   private final JdbcStatementProxy statement;
 
    private final JdbcLifecycleManager lifecycle;
-
    private final JdbcEventBus eventBus;
 
    private final long resultSetId;
@@ -33,64 +46,99 @@ public final class JdbcResultSetProxy implements InvocationHandler
    private ResultSet proxy;
 
    /*
-    * Наш lifecycle state.
-    * Не обязательно совпадает с состоянием raw ResultSet,
-    * пока StatementProxy не сообщил о неявном close.
+    * Lifecycle state нашего proxy.
     */
    private boolean closed;
 
+   /*
+    * OPEN event должен быть отправлен ровно один раз.
+    *
+    * Создание proxy двухфазное:
+    *
+    * 1. register cursor в lifecycle
+    * 2. позже fireOpen()
+    *
+    * Это позволяет StatementProxy сначала зарегистрировать
+    * новый cursor, затем закрыть старый, не создавая
+    * промежуточного openCursorCount == 0.
+    */
+   private boolean openEventFired;
+
 
    /** */
-   private JdbcResultSetProxy (
-      ResultSet resultSet,
-      Statement statement,
-      long statementId,
-      JdbcLifecycleManager lifecycle,
-      JdbcEventBus eventBus
+   private JdbcResultSetProxy(
+           ResultSet resultSet,
+           JdbcStatementProxy statement,
+           long statementId,
+           JdbcLifecycleManager lifecycle,
+           JdbcEventBus eventBus
    )
    {
       if( resultSet == null )
-         throw new IllegalArgumentException("resultSet is null");
+         throw new IllegalArgumentException(
+                 "resultSet is null"
+         );
 
       if( statement == null )
-          throw new IllegalArgumentException("statement is null");
+         throw new IllegalArgumentException(
+                 "statement is null"
+         );
 
       if( lifecycle == null )
-          throw new IllegalArgumentException("lifecycle is null");
+         throw new IllegalArgumentException(
+                 "lifecycle is null"
+         );
 
       this.resultSet = resultSet;
       this.statement = statement;
       this.lifecycle = lifecycle;
       this.eventBus  = eventBus;
 
-      this.resultSetId = lifecycle.registerResultSet( resultSet, statementId );
+      resultSetId =
+              lifecycle.registerCursorResultSet(
+                      resultSet,
+                      statementId
+              );
    }
 
 
    /**
-    * Создаёт handler + proxy.
-    * <p>
-    * StatementProxy должен сохранить возвращённый handler, а наружу отдать proxy().
+    * Создаёт handler и JDBC proxy.
+    *
+    * OPEN event здесь специально НЕ отправляется.
+    * Его вызывает owner StatementProxy после того,
+    * как завершена необходимая lifecycle-синхронизация.
     */
-   public static JdbcResultSetProxy create (
-      ResultSet resultSet,
-      Statement statement,
-      long statementId,
-      JdbcLifecycleManager lifecycle,
-      JdbcEventBus eventBus
+   static JdbcResultSetProxy create(
+           ResultSet resultSet,
+           JdbcStatementProxy statement,
+           long statementId,
+           JdbcLifecycleManager lifecycle,
+           JdbcEventBus eventBus
    )
    {
-      final JdbcResultSetProxy handler = new JdbcResultSetProxy( resultSet, statement, statementId, lifecycle, eventBus );
-      handler.proxy = (ResultSet) Proxy.newProxyInstance( JdbcResultSetProxy.class.getClassLoader(), new Class<?>[] { ResultSet.class }, handler );
+      JdbcResultSetProxy handler =
+              new JdbcResultSetProxy(
+                      resultSet,
+                      statement,
+                      statementId,
+                      lifecycle,
+                      eventBus
+              );
 
-      handler.fireOpen();
+      handler.proxy =
+              (ResultSet) Proxy.newProxyInstance(
+                      JdbcResultSetProxy.class.getClassLoader(),
+                      new Class<?>[] { ResultSet.class },
+                      handler
+              );
 
       return handler;
    }
 
 
    /** */
-   public ResultSet proxy()
+   ResultSet proxy()
    {
       return proxy;
    }
@@ -110,48 +158,77 @@ public final class JdbcResultSetProxy implements InvocationHandler
    }
 
 
-   /** */
-   public boolean isClosed()
+   /**
+    * Только локальный lifecycle state.
+    *
+    * Driver здесь не опрашиваем.
+    */
+   boolean isLifecycleClosed()
    {
       return closed;
    }
 
 
    @Override
-   public Object invoke( Object proxy, Method method, Object[] args ) throws Throwable
+   public Object invoke(
+           Object proxy,
+           Method method,
+           Object[] args
+   )
+           throws Throwable
    {
-
-      final String methodName = method.getName();
+      String methodName =
+              method.getName();
 
       /*
-       * Object methods не делегируем raw объекту.
+       * Object identity нашего proxy никак
+       * не зависит от equals/hashCode driver-а.
        */
       if( Object.class.equals(method.getDeclaringClass()) )
-          return invokeObjectMethod( proxy, methodName, args );
+      {
+         return invokeObjectMethod(
+                 proxy,
+                 methodName,
+                 args
+         );
+      }
 
-      if( "close".equals(methodName) )
+      if( "close".equals(methodName)
+              && method.getParameterTypes().length == 0 )
       {
          close();
+
          return null;
       }
 
-      /*
-       * Нельзя отдавать raw Statement наружу.
-       */
-      if( "getStatement".equals(methodName) && method.getParameterTypes().length == 0 )
+      if( "isClosed".equals(methodName)
+              && method.getParameterTypes().length == 0 )
       {
-         return statement;
+         return isClosed();
       }
 
       /*
-       * unwrap(ResultSet.class) должен оставить клиента
-       * внутри нашего proxy.
+       * Никогда не выпускаем raw Statement
+       * через tracked cursor ResultSet.
+       */
+      if( "getStatement".equals(methodName)
+              && method.getParameterTypes().length == 0 )
+      {
+         return statement.proxy();
+      }
+
+      /*
+       * unwrap(ResultSet.class) должен оставить
+       * пользователя внутри proxy.
+       *
+       * Vendor-specific unwrap делегируется driver-у.
        */
       if( "unwrap".equals(methodName)
               && args != null
               && args.length == 1 )
       {
-         Class<?> clazz = (Class<?>) args[0];
+         Class<?> clazz =
+                 (Class<?>) args[0];
 
          if( clazz.isInstance(proxy) )
             return clazz.cast(proxy);
@@ -161,13 +238,17 @@ public final class JdbcResultSetProxy implements InvocationHandler
               && args != null
               && args.length == 1 )
       {
-         Class<?> clazz = (Class<?>) args[0];
+         Class<?> clazz =
+                 (Class<?>) args[0];
 
          if( clazz.isInstance(proxy) )
             return true;
       }
 
-      return invokeRaw(method, args);
+      return invokeRaw(
+              method,
+              args
+      );
    }
 
 
@@ -180,37 +261,38 @@ public final class JdbcResultSetProxy implements InvocationHandler
       if( closed )
          return;
 
-      boolean rawClosed = false;
-
       try
       {
          resultSet.close();
-         rawClosed = true;
       }
       catch( Throwable throwable )
       {
          /*
-          * close() мог физически закрыть объект и всё же
-          * вернуть ошибку. Проверяем состояние консервативно.
+          * Driver мог физически закрыть RS
+          * и одновременно вернуть ошибку.
           */
-         rawClosed = isRawClosed();
-
-         if( rawClosed )
+         if( isRawClosed() )
             lifecycleClosed();
 
-         throw unwrapThrowable(throwable);
+         throw unwrapThrowable(
+                 throwable
+         );
       }
 
-      if( rawClosed )
-         lifecycleClosed();
+      lifecycleClosed();
    }
 
 
    /**
-    * Statement.close() / повторный execute*() закрыл raw ResultSet
-    * без вызова ResultSetProxy.close().
+    * ResultSet был закрыт самим Statement/driver-ом:
     *
-    * Raw close здесь НЕ выполняем.
+    * - Statement.close()
+    * - повторный execute*
+    * - getMoreResults()
+    * - CLOSE_CURRENT_RESULT
+    * - CLOSE_ALL_RESULTS
+    *
+    * Raw close здесь повторно НЕ вызываем.
     */
    synchronized void closedByStatement()
    {
@@ -222,7 +304,7 @@ public final class JdbcResultSetProxy implements InvocationHandler
 
 
    /**
-    * Единственная точка изменения нашего lifecycle state.
+    * Единственная точка завершения cursor lifecycle.
     */
    private void lifecycleClosed()
    {
@@ -230,24 +312,68 @@ public final class JdbcResultSetProxy implements InvocationHandler
          return;
 
       boolean removed =
-              lifecycle.unregisterResultSet(
+              lifecycle.unregisterCursorResultSet(
                       resultSet,
                       resultSetId
               );
 
-      if( !removed )
-      {
-         /*
-          * Уже был unregister с другой стороны.
-          * Для данного proxy ресурс считается закрытым.
-          */
-         closed = true;
-         return;
-      }
-
+      /*
+       * С точки зрения этого handler-а ресурс
+       * после данного момента закрыт независимо
+       * от результата unregister.
+       */
       closed = true;
 
-      fireClose();
+      /*
+       * Удаляем handler из IdentityHashMap owner-а.
+       *
+       * Owner проверит identity handler-а,
+       * поэтому stale proxy не удалит новый объект,
+       * которому уже мог быть выдан тот же R-slot.
+       */
+      statement.cursorResultSetClosed(
+              this
+      );
+
+      /*
+       * CLOSE event существует только для реально
+       * зарегистрированного cursor-а.
+       */
+      if( removed )
+         fireClose();
+
+      /*
+       * raw ResultSet.close() мог привести к
+       * автоматическому Statement.close()
+       * из-за closeOnCompletion().
+       *
+       * Проверяем это ПОСЛЕ RESULT_SET_CLOSE,
+       * чтобы порядок событий был:
+       *
+       * RESULT_SET_CLOSE
+       * STATEMENT_CLOSE
+       */
+      statement.syncCloseOnCompletion();
+   }
+
+
+   /**
+    * isClosed() синхронизирует lifecycle, если driver
+    * уже закрыл ResultSet не через наш proxy.
+    */
+   private synchronized boolean isClosed()
+           throws SQLException
+   {
+      if( closed )
+         return true;
+
+      boolean rawClosed =
+              resultSet.isClosed();
+
+      if( rawClosed )
+         lifecycleClosed();
+
+      return rawClosed;
    }
 
 
@@ -260,6 +386,9 @@ public final class JdbcResultSetProxy implements InvocationHandler
       }
       catch( SQLException ignored )
       {
+         /*
+          * Консервативно считаем ресурс ещё открытым.
+          */
          return false;
       }
    }
@@ -300,30 +429,44 @@ public final class JdbcResultSetProxy implements InvocationHandler
          return System.identityHashCode(proxy);
 
       if( "toString".equals(methodName) )
+      {
          return "JdbcResultSetProxy["
-                 + resultSetId
+                 + JdbcObjectId.toString(resultSetId)
                  + "]";
+      }
 
       throw new IllegalStateException(
-              "Unsupported Object method: " + methodName
+              "Unsupported Object method: "
+                      + methodName
       );
    }
 
 
-   /** */
-   private void fireOpen()
+   /**
+    * OPEN event вызывается owner StatementProxy.
+    */
+   synchronized void fireOpen()
    {
+      if( openEventFired )
+         return;
+
+      openEventFired = true;
+
       if( eventBus == null )
          return;
 
-      if( !eventBus.hasListeners(JdbcResultSetEvent.class) )
+      if( !eventBus.hasListeners(
+              JdbcResultSetEvent.class
+      ) )
+      {
          return;
+      }
 
-      eventBus.fire(
+      safeFire(
               JdbcResultSetEvent.open(
                       proxy,
                       resultSetId,
-                      lifecycle.openResultSetCount()
+                      lifecycle.openCursorCount()
               )
       );
    }
@@ -335,22 +478,65 @@ public final class JdbcResultSetProxy implements InvocationHandler
       if( eventBus == null )
          return;
 
-      if( !eventBus.hasListeners( JdbcResultSetEvent.class ) )
-           return;
+      if( !eventBus.hasListeners(
+              JdbcResultSetEvent.class
+      ) )
+      {
+         return;
+      }
 
-      eventBus.fire( JdbcResultSetEvent.close( proxy, resultSetId, lifecycle.openResultSetCount() ) );
+      safeFire(
+              JdbcResultSetEvent.close(
+                      proxy,
+                      resultSetId,
+                      lifecycle.openCursorCount()
+              )
+      );
+   }
+
+
+   /**
+    * Events являются observation-only.
+    *
+    * Ошибка listener-а не должна превращать
+    * успешный JDBC operation в ошибку приложения.
+    */
+   private void safeFire(
+           JdbcEvent event
+   )
+   {
+      try
+      {
+         eventBus.fire(event);
+      }
+      catch( ThreadDeath | VirtualMachineError fatal )
+      {
+         throw fatal;
+      }
+      catch( Throwable ignored )
+      {
+         /*
+          * TODO diagnostics/logging на уровне JdbcEventBus.
+          */
+      }
    }
 
 
    /** */
-   private static Throwable unwrapThrowable( Throwable throwable )
+   private static Throwable unwrapThrowable(
+           Throwable throwable
+   )
    {
       if( throwable instanceof InvocationTargetException )
       {
-         Throwable cause = ((InvocationTargetException) throwable).getCause();
+         Throwable cause =
+                 ((InvocationTargetException) throwable)
+                         .getCause();
+
          if( cause != null )
-             return cause;
+            return cause;
       }
+
       return throwable;
    }
 }
