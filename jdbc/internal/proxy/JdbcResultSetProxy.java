@@ -16,15 +16,14 @@ import java.sql.SQLException;
 
 /**
  * Proxy только для Statement-owned cursor ResultSet.
- *
+ * <p>
  * Не предназначен для:
  * - Statement.getGeneratedKeys()
  * - Array.getResultSet()
  * - DatabaseMetaData ResultSet
  * - прочих служебных JDBC ResultSet
  */
-public final class JdbcResultSetProxy
-        implements InvocationHandler
+public final class JdbcResultSetProxy implements InvocationHandler
 {
    private final ResultSet resultSet;
 

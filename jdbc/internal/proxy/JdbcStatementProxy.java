@@ -29,6 +29,11 @@ import java.util.TreeSet;
 
 /**
  * JDBC Statement / PreparedStatement / CallableStatement proxy.
+ *
+ * Tracks only Statement-owned cursor ResultSet.
+ *
+ * Arbitrary JDBC ResultSet such as generated keys are not
+ * registered in JdbcLifecycleManager.
  */
 public final class JdbcStatementProxy
         implements InvocationHandler
@@ -39,9 +44,9 @@ public final class JdbcStatementProxy
     * Именно proxy Connection.
     *
     * Statement.getConnection() никогда
-    * не должен возвращать raw connection.
+    * не должен возвращать raw Connection.
     */
-   private final Connection connection;
+   private final JdbcConnectionProxy  connection;
 
    private final JdbcLifecycleManager lifecycle;
    private final JdbcEventBus eventBus;
@@ -78,52 +83,50 @@ public final class JdbcStatementProxy
     *
     * Identity semantics обязательны.
     */
-   private final Map<ResultSet, JdbcResultSetProxy>
-           cursorResultSets =
-           new IdentityHashMap<>();
+   private final Map<ResultSet, JdbcResultSetProxy> cursorResultSets = new IdentityHashMap<>();
 
    private Statement proxy;
 
-   private boolean closed;
-
    /*
-    * Только hint для проверки driver state.
-    *
-    * Мы НЕ реализуем closeOnCompletion самостоятельно.
+    * Lifecycle state proxy-а.
     */
-   private boolean closeOnCompletion;
+   private boolean closed;
 
 
    /** */
    private JdbcStatementProxy(
            Statement statement,
-           Connection connection,
+           JdbcConnectionProxy connection,
            String sql,
            JdbcLifecycleManager lifecycle,
            JdbcEventBus eventBus
    )
    {
       if( statement == null )
+      {
          throw new IllegalArgumentException(
                  "statement is null"
          );
+      }
 
       if( connection == null )
+      {
          throw new IllegalArgumentException(
                  "connection is null"
          );
+      }
 
       if( lifecycle == null )
+      {
          throw new IllegalArgumentException(
                  "lifecycle is null"
          );
+      }
 
       this.statement = statement;
       this.connection = connection;
-
       this.lifecycle = lifecycle;
       this.eventBus = eventBus;
-
       this.sql = sql;
 
       prepared =
@@ -138,9 +141,9 @@ public final class JdbcStatementProxy
 
 
    /** */
-   public static Statement create(
+   static JdbcStatementProxy create(
            Statement statement,
-           Connection connection,
+           JdbcConnectionProxy connection,
            String sql,
            JdbcLifecycleManager lifecycle,
            JdbcEventBus eventBus
@@ -171,11 +174,14 @@ public final class JdbcStatementProxy
                       handler
               );
 
-      handler.fireOpen();
-
-      return handler.proxy;
+      /*
+       * fireOpen() здесь НЕ вызываем.
+       *
+       * Сначала ConnectionProxy должен
+       * зарегистрировать owner.
+       */
+      return handler;
    }
-
 
    /** */
    public long statementId()
@@ -198,6 +204,15 @@ public final class JdbcStatementProxy
    }
 
 
+   /**
+    * Локальный lifecycle state.
+    */
+   boolean isLifecycleClosed()
+   {
+      return closed;
+   }
+
+
    @Override
    public Object invoke(
            Object proxy,
@@ -213,7 +228,9 @@ public final class JdbcStatementProxy
        * Object identity proxy-а не зависит
        * от equals/hashCode JDBC driver-а.
        */
-      if( Object.class.equals(method.getDeclaringClass()) )
+      if( Object.class.equals(
+              method.getDeclaringClass()
+      ) )
       {
          return invokeObjectMethod(
                  proxy,
@@ -248,42 +265,7 @@ public final class JdbcStatementProxy
       if( "getConnection".equals(methodName)
               && method.getParameterTypes().length == 0 )
       {
-         return connection;
-      }
-
-      /*
-       * closeOnCompletion принадлежит driver-у.
-       *
-       * Наш boolean нужен только чтобы не вызывать
-       * statement.isClosed() после каждого RS.close().
-       */
-      if( "closeOnCompletion".equals(methodName)
-              && method.getParameterTypes().length == 0 )
-      {
-         Object value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
-
-         closeOnCompletion = true;
-
-         return value;
-      }
-
-      /*
-       * Не подменяем JDBC semantics собственным boolean.
-       *
-       * В частности, закрытый Statement должен вернуть
-       * driver SQLException согласно его реализации.
-       */
-      if( "isCloseOnCompletion".equals(methodName)
-              && method.getParameterTypes().length == 0 )
-      {
-         return invokeRaw(
-                 method,
-                 args
-         );
+         return connection.proxy();
       }
 
       /*
@@ -309,7 +291,7 @@ public final class JdbcStatementProxy
        * Generated keys являются JDBC ResultSet,
        * но НЕ входят в наш cursor lifecycle.
        *
-       * Специально не proxy/wrap/register.
+       * Возвращаем raw ResultSet.
        */
       if( "getGeneratedKeys".equals(methodName)
               && method.getParameterTypes().length == 0 )
@@ -334,7 +316,7 @@ public final class JdbcStatementProxy
 
       /*
        * unwrap(proxy-compatible interface)
-       * остаётся внутри proxy.
+       * оставляет клиента внутри proxy.
        *
        * Vendor-specific unwrap делегируем driver-у.
        */
@@ -390,20 +372,15 @@ public final class JdbcStatementProxy
          inParameters.clear();
 
          /*
-          * OUT registrations специально не чистим.
-          *
-          * clearParameters() очищает значения parameters,
-          * но не является нашим сигналом отмены
-          * registerOutParameter().
+          * OUT registrations здесь не чистим.
           */
-
          return value;
       }
 
       /*
        * CallableStatement.registerOutParameter(int,...)
        *
-       * Named parameters пока только делегируются.
+       * Named OUT parameters пока только делегируются.
        */
       if( callable
               && "registerOutParameter".equals(methodName)
@@ -430,6 +407,7 @@ public final class JdbcStatementProxy
        * executeUpdate()
        * executeBatch()
        * executeLargeUpdate()
+       * executeLargeBatch()
        * ...
        */
       if( methodName.startsWith("execute") )
@@ -440,6 +418,14 @@ public final class JdbcStatementProxy
          );
       }
 
+      /*
+       * В том числе сюда естественно попадают:
+       *
+       * closeOnCompletion()
+       * isCloseOnCompletion()
+       *
+       * Мы не моделируем closeOnCompletion самостоятельно.
+       */
       return invokeRaw(
               method,
               args
@@ -448,7 +434,7 @@ public final class JdbcStatementProxy
 
 
    /**
-    * Execute operation.
+    * execute* operation.
     */
    private Object execute(
            Method method,
@@ -460,9 +446,7 @@ public final class JdbcStatementProxy
               method.getName();
 
       String executedSql =
-              sql(
-                      args
-              );
+              sql(args);
 
       fireBeforeExecute(
               methodName,
@@ -489,11 +473,15 @@ public final class JdbcStatementProxy
 
          /*
           * Driver мог закрыть предыдущий current cursor
-          * даже при ошибке нового execute.
+          * даже при ошибке execute.
           */
          reconcileCursorResultSets();
 
-         syncCloseOnCompletion();
+         /*
+          * Statement также мог оказаться закрыт
+          * по любой driver/JDBC причине.
+          */
+         syncClosedState();
 
          fireExecuteError(
                  methodName,
@@ -512,16 +500,13 @@ public final class JdbcStatementProxy
               System.nanoTime() - started;
 
       /*
-       * ВАЖНО:
+       * Новый cursor регистрируем ДО reconcile старых.
        *
-       * новый cursor регистрируем ДО reconcile старого.
+       * Иначе может возникнуть ложное:
        *
-       * Иначе:
+       * openCursorCount == 0
        *
-       * old cursor closed
-       * openCursorCount -> 0
-       * будущий auto-finish transaction
-       * new cursor ещё не registered
+       * между старым и новым ResultSet.
        */
       JdbcResultSetProxy newCursor = null;
 
@@ -540,8 +525,8 @@ public final class JdbcStatementProxy
          /*
           * Statement.execute() == true.
           *
-          * Регистрируем current cursor немедленно,
-          * даже если пользователь никогда не вызовет
+          * Регистрируем current ResultSet сразу,
+          * даже если пользователь ещё не вызвал
           * getResultSet().
           */
          ResultSet current =
@@ -554,17 +539,21 @@ public final class JdbcStatementProxy
       }
 
       /*
-       * Теперь можно unregister закрытые старые cursor-ы.
+       * Теперь безопасно снять закрытые старые cursor-ы.
        */
       reconcileCursorResultSets();
 
-      syncCloseOnCompletion();
+      /*
+       * Не моделируем причину закрытия Statement.
+       * Просто синхронизируем факт.
+       */
+      syncClosedState();
 
       /*
-       * Statement AFTER идёт перед RESULT_SET_OPEN event.
+       * Lifecycle registration нового cursor-а
+       * уже существует.
        *
-       * При этом lifecycle-registration нового cursor-а
-       * уже выполнена.
+       * Event OPEN отправляем после AFTER execute.
        */
       fireAfterExecute(
               methodName,
@@ -576,7 +565,7 @@ public final class JdbcStatementProxy
          newCursor.fireOpen();
 
       /*
-       * executeQuery() должен вернуть proxy ResultSet.
+       * executeQuery() наружу должен вернуть proxy.
        */
       if( value instanceof ResultSet
               && newCursor != null )
@@ -589,7 +578,8 @@ public final class JdbcStatementProxy
 
 
    /**
-    * Statement.getMoreResults().
+    * Statement.getMoreResults()
+    * Statement.getMoreResults(int)
     */
    private Object getMoreResults(
            Method method,
@@ -615,7 +605,7 @@ public final class JdbcStatementProxy
           */
          reconcileCursorResultSets();
 
-         syncCloseOnCompletion();
+         syncClosedState();
 
          throw throwable;
       }
@@ -623,11 +613,14 @@ public final class JdbcStatementProxy
       JdbcResultSetProxy newCursor = null;
 
       /*
-       * Если появился новый current ResultSet,
-       * регистрируем его ДО unregister старых.
+       * При наличии нового ResultSet сначала
+       * регистрируем его.
        *
-       * KEEP_CURRENT_RESULT при этом работает:
-       * старый raw ResultSet останется isClosed()==false.
+       * Это также корректно работает с
+       * KEEP_CURRENT_RESULT:
+       *
+       * предыдущий ResultSet остаётся raw isClosed()==false
+       * и reconcile его не снимет.
        */
       if( Boolean.TRUE.equals(value) )
       {
@@ -642,7 +635,7 @@ public final class JdbcStatementProxy
 
       reconcileCursorResultSets();
 
-      syncCloseOnCompletion();
+      syncClosedState();
 
       if( newCursor != null )
          newCursor.fireOpen();
@@ -663,7 +656,8 @@ public final class JdbcStatementProxy
       /*
        * Сначала driver.
        *
-       * Если setXXX упал, proxy state менять нельзя.
+       * Если setXXX выбросил SQLException,
+       * наш parameter state не меняется.
        */
       Object value =
               invokeRaw(
@@ -696,8 +690,8 @@ public final class JdbcStatementProxy
 
 
    /**
-    * Определяем positional PreparedStatement setter
-    * без ручного SET_METHODS списка.
+    * Определяет positional PreparedStatement setter
+    * без ручного списка SET_METHODS.
     */
    private static boolean isParameterSetter(
            Method method,
@@ -717,8 +711,8 @@ public final class JdbcStatementProxy
          return false;
 
       /*
-       * Statement.setFetchSize()
-       * Statement.setMaxRows()
+       * Statement.setFetchSize(),
+       * Statement.setMaxRows(),
        * Statement.setQueryTimeout()
        *
        * сюда не проходят.
@@ -730,7 +724,7 @@ public final class JdbcStatementProxy
 
 
    /**
-    * Обычный пользовательский getResultSet().
+    * Пользовательский Statement.getResultSet().
     */
    private ResultSet wrapCursorResultSet(
            ResultSet resultSet
@@ -745,8 +739,8 @@ public final class JdbcStatementProxy
               );
 
       /*
-       * Уже закрытый driver ResultSet
-       * lifecycle не регистрируем.
+       * Если driver уже считает ResultSet закрытым,
+       * cursor lifecycle не создаётся.
        */
       if( handler == null )
          return resultSet;
@@ -785,8 +779,8 @@ public final class JdbcStatementProxy
       }
 
       /*
-       * Если driver уже считает RS закрытым,
-       * cursor lifecycle не создаём.
+       * Уже закрытый ResultSet lifecycle
+       * не регистрируем.
        */
       if( isRawResultSetClosed(resultSet) )
          return null;
@@ -811,9 +805,9 @@ public final class JdbcStatementProxy
 
    /**
     * ResultSetProxy сообщает owner-у,
-    * что его lifecycle завершён.
+    * что его lifecycle закончился.
     *
-    * Identity check защищает от stale proxy.
+    * Identity handler-а защищает от stale proxy.
     */
    void cursorResultSetClosed(
            JdbcResultSetProxy resultSet
@@ -834,8 +828,8 @@ public final class JdbcStatementProxy
 
 
    /**
-    * Убирает cursor ResultSet, которые driver
-    * уже закрыл без ResultSetProxy.close().
+    * Синхронизирует ResultSet, которые driver
+    * закрыл без вызова нашего ResultSetProxy.close().
     */
    private void reconcileCursorResultSets()
    {
@@ -863,12 +857,13 @@ public final class JdbcStatementProxy
          ) )
          {
             /*
-             * closedByStatement() сам:
+             * closedByStatement() выполняет:
              *
-             * - unregister lifecycle
-             * - release R slot
-             * - remove owner cache
-             * - fire RESULT_SET_CLOSE
+             * unregister lifecycle
+             * release ResultSet ID slot
+             * owner callback
+             * RESULT_SET_CLOSE event
+             * Statement closed-state sync
              */
             resultSet.closedByStatement();
          }
@@ -877,10 +872,9 @@ public final class JdbcStatementProxy
 
 
    /**
-    * Statement.close() физически закрывает
-    * все dependent ResultSet.
+    * Statement уже физически закрыт driver-ом.
     *
-    * Здесь только синхронизируем наш lifecycle.
+    * Синхронизируем все tracked ResultSet.
     */
    private void closeCursorResultSetsByStatement()
    {
@@ -895,8 +889,8 @@ public final class JdbcStatementProxy
       /*
        * Сначала очищаем owner cache.
        *
-       * callback от ResultSetProxy после этого
-       * станет безопасным no-op.
+       * Callback из ResultSetProxy после этого
+       * становится безопасным no-op.
        */
       cursorResultSets.clear();
 
@@ -923,8 +917,14 @@ public final class JdbcStatementProxy
       catch( Throwable throwable )
       {
          /*
-          * Driver мог реально закрыть Statement
-          * и одновременно бросить SQLException.
+          * close() мог закрыть часть ResultSet
+          * и затем выбросить SQLException.
+          */
+         reconcileCursorResultSets();
+
+         /*
+          * Сам Statement также мог уже
+          * физически закрыться.
           */
          if( isRawStatementClosed() )
             statementClosed();
@@ -937,7 +937,8 @@ public final class JdbcStatementProxy
 
 
    /**
-    * Единственная точка нашего Statement lifecycle close.
+    * Единственная точка завершения
+    * Statement lifecycle нашего proxy.
     */
    private void statementClosed()
    {
@@ -946,17 +947,18 @@ public final class JdbcStatementProxy
 
       closed = true;
 
-      /*
-       * Mandatory lifecycle сначала.
-       */
       closeCursorResultSetsByStatement();
 
       /*
-       * Observation потом.
+       * Mandatory owner state.
+       */
+      connection.statementClosed(this);
+
+      /*
+       * Observation.
        */
       fireClose();
    }
-
 
    /**
     * Statement.isClosed().
@@ -978,18 +980,21 @@ public final class JdbcStatementProxy
 
 
    /**
-    * Проверка автоматического closeOnCompletion.
+    * Универсальная синхронизация фактического
+    * состояния raw Statement.
     *
-    * Мы НЕ закрываем Statement сами.
+    * Нам неважно, ПОЧЕМУ driver закрыл Statement:
     *
-    * Источник истины только JDBC driver.
+    * - closeOnCompletion()
+    * - Connection.close()
+    * - driver-specific behaviour
+    * - другая JDBC причина
+    *
+    * Proxy моделирует только факт закрытия.
     */
-   void syncCloseOnCompletion()
+   void syncClosedState()
    {
       if( closed )
-         return;
-
-      if( !closeOnCompletion )
          return;
 
       if( isRawStatementClosed() )
@@ -1006,6 +1011,10 @@ public final class JdbcStatementProxy
       }
       catch( SQLException ignored )
       {
+         /*
+          * Консервативно считаем Statement
+          * ещё открытым.
+          */
          return false;
       }
    }
@@ -1023,8 +1032,8 @@ public final class JdbcStatementProxy
       catch( SQLException ignored )
       {
          /*
-          * Если состояние определить не удалось,
-          * консервативно считаем cursor открытым.
+          * Если определить состояние нельзя,
+          * считаем cursor открытым.
           */
          return false;
       }
@@ -1032,7 +1041,7 @@ public final class JdbcStatementProxy
 
 
    /**
-    * SQL конкретного execute.
+    * SQL конкретного execute*().
     */
    private String sql(
            Object[] args
@@ -1056,8 +1065,8 @@ public final class JdbcStatementProxy
 
 
    /**
-    * Снимаем OUT values только когда реально
-    * есть listener на JdbcStatementEvent.
+    * OUT values собираются только при наличии
+    * listener-а на JdbcStatementEvent.
     */
    private Map<Integer, Object> outParameterValues()
    {
@@ -1154,7 +1163,7 @@ public final class JdbcStatementProxy
 
 
    /** */
-   private void fireOpen()
+   void fireOpen()
    {
       if( !hasStatementListeners() )
          return;
@@ -1259,8 +1268,12 @@ public final class JdbcStatementProxy
 
 
    /**
-    * Event listeners не являются частью
-    * JDBC correctness.
+    * Event listeners являются observation-only.
+    *
+    * RuntimeException listener-а не должна
+    * изменять результат JDBC operation.
+    *
+    * Error намеренно не перехватываем.
     */
    private void safeFire(
            JdbcEvent event
@@ -1270,15 +1283,30 @@ public final class JdbcStatementProxy
       {
          eventBus.fire(event);
       }
-      catch( ThreadDeath | VirtualMachineError fatal )
-      {
-         throw fatal;
-      }
-      catch( Throwable ignored )
+      catch( RuntimeException ignored )
       {
          /*
-          * TODO diagnostics/logging на JdbcEventBus level.
+          * TODO logging/diagnostics
+          * лучше централизовать в JdbcEventBus.
           */
       }
+   }
+
+   void syncConnectionState()
+   {
+      if( closed )
+         return;
+
+      reconcileCursorResultSets();
+
+      syncClosedState();
+   }
+
+   void closedByConnection()
+   {
+      if( closed )
+         return;
+
+      statementClosed();
    }
 }
