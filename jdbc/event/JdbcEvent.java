@@ -5,8 +5,6 @@ import java.util.EventObject;
 /** */
 public class JdbcEvent extends EventObject
 {
-   private final long objectId;
-
    private final EventType  type;
    private final EventPhase phase;
 
@@ -17,14 +15,12 @@ public class JdbcEvent extends EventObject
    /** */
    public JdbcEvent(
            Object source,
-           long objectId,
            EventType type,
            EventPhase phase
    )
    {
       this(
               source,
-              objectId,
               type,
               phase,
               null
@@ -35,7 +31,6 @@ public class JdbcEvent extends EventObject
    /** */
    public JdbcEvent(
            Object source,
-           long objectId,
            EventType type,
            EventPhase phase,
            Throwable throwable
@@ -43,27 +38,17 @@ public class JdbcEvent extends EventObject
    {
       super(source);
 
-      if( objectId <= 0 )
-         throw new IllegalArgumentException("objectId <= 0");
-
       if( type == null )
          throw new IllegalArgumentException("type is null");
 
       if( phase == null )
          throw new IllegalArgumentException("phase is null");
 
-      this.objectId  = objectId;
       this.type      = type;
       this.phase     = phase;
       this.throwable = throwable;
 
       this.timestampNanos = System.nanoTime();
-   }
-
-
-   public long objectId()
-   {
-      return objectId;
    }
 
 

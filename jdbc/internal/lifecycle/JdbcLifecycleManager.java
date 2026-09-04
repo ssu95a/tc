@@ -1,7 +1,5 @@
 package ru.inversion.tc.jdbc.internal.lifecycle;
 
-import ru.inversion.tc.jdbc.internal.JdbcObjectId;
-
 import java.sql.ResultSet;
 import java.util.IdentityHashMap;
 import java.util.Map;
@@ -11,53 +9,38 @@ import java.util.Map;
  * Mandatory JDBC lifecycle state for one Connection.
  *
  * Tracks only Statement-owned cursor ResultSet.
- *
- * Does NOT track arbitrary JDBC ResultSet such as:
- * - Statement.getGeneratedKeys()
- * - Array.getResultSet()
- * - DatabaseMetaData result sets
  */
 public final class JdbcLifecycleManager
 {
-   private final JdbcObjectId.Generator ids =
-           new JdbcObjectId.Generator();
-
-   /*
-    * Только зарегистрированные cursor ResultSet.
-    *
-    * Identity semantics принципиальны:
-    * JDBC driver equals/hashCode здесь не используются.
-    */
-   private final Map<ResultSet, Long> cursorResultSets =
+   private final Map<ResultSet, CursorRegistration> cursors =
            new IdentityHashMap<>();
 
 
-   /** */
-   public long connectionId()
-   {
-      return ids.connectionId();
-   }
-
-
    /**
-    * Выдать следующий Statement ID
-    * в рамках данного Connection.
+    * Registration identity используется для защиты
+    * от stale JdbcResultSetProxy.
     */
-   public long nextStatementId()
+   public static final class CursorRegistration
    {
-      return ids.nextStatementId();
+      private final ResultSet resultSet;
+
+      private CursorRegistration(
+              ResultSet resultSet
+      )
+      {
+         this.resultSet = resultSet;
+      }
    }
 
 
    /**
-    * Регистрирует Statement-owned cursor ResultSet.
+    * Регистрирует cursor.
     *
     * Повторная регистрация того же raw ResultSet
-    * для того же Statement идемпотентна.
+    * возвращает существующую registration.
     */
-   public synchronized long registerCursorResultSet(
-           ResultSet resultSet,
-           long statementId
+   public synchronized CursorRegistration registerCursor(
+           ResultSet resultSet
    )
    {
       if( resultSet == null )
@@ -67,153 +50,72 @@ public final class JdbcLifecycleManager
          );
       }
 
-      if( !JdbcObjectId.isStatement(statementId) )
-      {
-         throw new IllegalArgumentException(
-                 "Invalid statementId: "
-                         + JdbcObjectId.toString(statementId)
-         );
-      }
+      CursorRegistration current =
+              cursors.get(resultSet);
 
-      if( JdbcObjectId.connectionId(statementId)
-              != connectionId() )
-      {
-         throw new IllegalArgumentException(
-                 "Statement belongs to another connection: "
-                         + JdbcObjectId.toString(statementId)
-         );
-      }
+      if( current != null )
+         return current;
 
-      Long currentId =
-              cursorResultSets.get(resultSet);
+      CursorRegistration registration =
+              new CursorRegistration(resultSet);
 
-      if( currentId != null )
-      {
-         /*
-          * Один и тот же raw ResultSet не может
-          * одновременно принадлежать разным Statement.
-          */
-         if( JdbcObjectId.statementId(
-                 currentId.longValue()
-         ) != statementId )
-         {
-            throw new IllegalStateException(
-                    "Cursor ResultSet already registered "
-                            + "for another statement: "
-                            + JdbcObjectId.toString(
-                            currentId.longValue()
-                    )
-            );
-         }
-
-         return currentId.longValue();
-      }
-
-      long resultSetId =
-              ids.nextResultSetId(
-                      statementId
-              );
-
-      cursorResultSets.put(
+      cursors.put(
               resultSet,
-              resultSetId
+              registration
       );
 
-      return resultSetId;
+      return registration;
    }
 
 
    /**
-    * Завершает lifecycle конкретного cursor ResultSet.
+    * Снимает именно эту registration.
     *
-    * Возвращает true только если именно эта регистрация
-    * была реально удалена.
-    *
-    * Повторный unregister безопасен и возвращает false.
+    * Stale registration безопасно вернёт false.
     */
-   public synchronized boolean unregisterCursorResultSet(
-           ResultSet resultSet,
-           long expectedResultSetId
+   public synchronized boolean unregisterCursor(
+           CursorRegistration registration
    )
    {
-      if( resultSet == null )
+      if( registration == null )
          return false;
 
-      if( !JdbcObjectId.isResultSet(expectedResultSetId) )
-      {
-         throw new IllegalArgumentException(
-                 "Invalid resultSetId: "
-                         + JdbcObjectId.toString(
-                         expectedResultSetId
-                 )
-         );
-      }
+      ResultSet resultSet =
+              registration.resultSet;
 
-      Long currentId =
-              cursorResultSets.get(resultSet);
+      CursorRegistration current =
+              cursors.get(resultSet);
 
-      if( currentId == null )
+      if( current != registration )
          return false;
 
-      /*
-       * Удаляем только ожидаемую регистрацию.
-       */
-      if( currentId.longValue()
-              != expectedResultSetId )
-      {
-         return false;
-      }
-
-      cursorResultSets.remove(
-              resultSet
-      );
-
-      /*
-       * ResultSet slot освобождаем только после
-       * успешного удаления lifecycle registration.
-       */
-      ids.releaseResultSetId(
-              expectedResultSetId
-      );
+      cursors.remove(resultSet);
 
       return true;
    }
 
 
-   /**
-    * Количество tracked cursor ResultSet,
-    * открытых в рамках данного Connection.
-    */
    public synchronized int openCursorCount()
    {
-      return cursorResultSets.size();
+      return cursors.size();
    }
 
 
-   /**
-    * Есть ли хотя бы один tracked cursor.
-    */
    public synchronized boolean hasOpenCursors()
    {
-      return !cursorResultSets.isEmpty();
+      return !cursors.isEmpty();
    }
 
 
-   /**
-    * Проверяет наличие конкретной lifecycle registration.
-    */
-   public synchronized boolean isCursorRegistered(
-           ResultSet resultSet,
-           long resultSetId
+   public synchronized boolean isRegistered(
+           CursorRegistration registration
    )
    {
-      if( resultSet == null )
+      if( registration == null )
          return false;
 
-      Long currentId =
-              cursorResultSets.get(resultSet);
-
-      return currentId != null
-              && currentId.longValue() == resultSetId;
+      return cursors.get(
+              registration.resultSet
+      ) == registration;
    }
 }

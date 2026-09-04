@@ -3,7 +3,6 @@ package ru.inversion.tc.jdbc.internal.proxy;
 import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.event.JdbcResultSetEvent;
-import ru.inversion.tc.jdbc.internal.JdbcObjectId;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 
 import java.lang.reflect.InvocationHandler;
@@ -40,8 +39,6 @@ public final class JdbcResultSetProxy implements InvocationHandler
    private final JdbcLifecycleManager lifecycle;
    private final JdbcEventBus eventBus;
 
-   private final long resultSetId;
-
    private ResultSet proxy;
 
    /*
@@ -63,12 +60,12 @@ public final class JdbcResultSetProxy implements InvocationHandler
     */
    private boolean openEventFired;
 
+   private final JdbcLifecycleManager.CursorRegistration registration;
 
    /** */
    private JdbcResultSetProxy(
            ResultSet resultSet,
            JdbcStatementProxy statement,
-           long statementId,
            JdbcLifecycleManager lifecycle,
            JdbcEventBus eventBus
    )
@@ -93,11 +90,7 @@ public final class JdbcResultSetProxy implements InvocationHandler
       this.lifecycle = lifecycle;
       this.eventBus  = eventBus;
 
-      resultSetId =
-              lifecycle.registerCursorResultSet(
-                      resultSet,
-                      statementId
-              );
+      registration   = lifecycle.registerCursor(resultSet);
    }
 
 
@@ -111,7 +104,6 @@ public final class JdbcResultSetProxy implements InvocationHandler
    static JdbcResultSetProxy create(
            ResultSet resultSet,
            JdbcStatementProxy statement,
-           long statementId,
            JdbcLifecycleManager lifecycle,
            JdbcEventBus eventBus
    )
@@ -120,21 +112,19 @@ public final class JdbcResultSetProxy implements InvocationHandler
               new JdbcResultSetProxy(
                       resultSet,
                       statement,
-                      statementId,
                       lifecycle,
                       eventBus
               );
 
-      handler.proxy =
-              (ResultSet) Proxy.newProxyInstance(
-                      JdbcResultSetProxy.class.getClassLoader(),
-                      new Class<?>[] { ResultSet.class },
-                      handler
-              );
+         handler.proxy =
+                 (ResultSet) Proxy.newProxyInstance(
+                         JdbcResultSetProxy.class.getClassLoader(),
+                         new Class<?>[] { ResultSet.class },
+                         handler
+                 );
 
-      return handler;
+         return handler;
    }
-
 
    /** */
    ResultSet proxy()
@@ -147,13 +137,6 @@ public final class JdbcResultSetProxy implements InvocationHandler
    ResultSet raw()
    {
       return resultSet;
-   }
-
-
-   /** */
-   public long resultSetId()
-   {
-      return resultSetId;
    }
 
 
@@ -311,11 +294,9 @@ public final class JdbcResultSetProxy implements InvocationHandler
          return;
 
       boolean removed =
-              lifecycle.unregisterCursorResultSet(
-                      resultSet,
-                      resultSetId
+              lifecycle.unregisterCursor(
+                      registration
               );
-
       /*
        * С точки зрения этого handler-а ресурс
        * после данного момента закрыт независимо
@@ -429,9 +410,7 @@ public final class JdbcResultSetProxy implements InvocationHandler
 
       if( "toString".equals(methodName) )
       {
-         return "JdbcResultSetProxy["
-                 + JdbcObjectId.toString(resultSetId)
-                 + "]";
+         return "JdbcResultSetProxy[" + "]";
       }
 
       throw new IllegalStateException(
@@ -464,7 +443,6 @@ public final class JdbcResultSetProxy implements InvocationHandler
       safeFire(
               JdbcResultSetEvent.open(
                       proxy,
-                      resultSetId,
                       lifecycle.openCursorCount()
               )
       );

@@ -3,7 +3,6 @@ package ru.inversion.tc.jdbc.internal.proxy;
 import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.event.JdbcStatementEvent;
-import ru.inversion.tc.jdbc.internal.JdbcObjectId;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 
 import java.lang.reflect.InvocationHandler;
@@ -12,7 +11,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
 import java.sql.CallableStatement;
-import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -50,8 +48,6 @@ public final class JdbcStatementProxy
 
    private final JdbcLifecycleManager lifecycle;
    private final JdbcEventBus eventBus;
-
-   private final long statementId;
 
    /*
     * Для PreparedStatement / CallableStatement.
@@ -134,9 +130,6 @@ public final class JdbcStatementProxy
 
       callable =
               statement instanceof CallableStatement;
-
-      statementId =
-              lifecycle.nextStatementId();
    }
 
 
@@ -182,13 +175,6 @@ public final class JdbcStatementProxy
        */
       return handler;
    }
-
-   /** */
-   public long statementId()
-   {
-      return statementId;
-   }
-
 
    /** */
    Statement proxy()
@@ -789,7 +775,6 @@ public final class JdbcStatementProxy
               JdbcResultSetProxy.create(
                       resultSet,
                       this,
-                      statementId,
                       lifecycle,
                       eventBus
               );
@@ -1140,9 +1125,7 @@ public final class JdbcStatementProxy
 
       if( "toString".equals(methodName) )
       {
-         return "JdbcStatementProxy["
-                 + JdbcObjectId.toString(statementId)
-                 + "]";
+         return "JdbcStatementProxy@" + Integer.toHexString( System.identityHashCode(proxy) );
       }
 
       throw new IllegalStateException(

@@ -4,7 +4,6 @@ import ru.inversion.tc.jdbc.event.EventPhase;
 import ru.inversion.tc.jdbc.event.EventType;
 import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
-import ru.inversion.tc.jdbc.internal.JdbcObjectId;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 
 import java.lang.reflect.InvocationHandler;
@@ -28,7 +27,7 @@ import java.util.Map;
 
 /**
  * Mandatory JDBC Connection proxy.
- *
+ * <p>
  * Один JdbcConnectionProxy владеет:
  *
  * - одним JdbcLifecycleManager
@@ -43,7 +42,7 @@ public final class JdbcConnectionProxy
 {
    private final Connection connection;
 
-   private final JdbcLifecycleManager lifecycle;
+   private final JdbcLifecycleManager lifecycle = new JdbcLifecycleManager();
 
    private final JdbcEventBus eventBus;
 
@@ -52,8 +51,7 @@ public final class JdbcConnectionProxy
     *
     * Identity semantics принципиальны.
     */
-   private final Map<Statement, JdbcStatementProxy> statements =
-           new IdentityHashMap<>();
+   private final Map<Statement, JdbcStatementProxy> statements = new IdentityHashMap<>();
 
    private Connection proxy;
 
@@ -64,27 +62,14 @@ public final class JdbcConnectionProxy
 
 
    /** */
-   private JdbcConnectionProxy(
-           Connection connection,
-           JdbcEventBus eventBus
-   )
+   private JdbcConnectionProxy( Connection connection, JdbcEventBus eventBus )
    {
       if( connection == null )
-      {
-         throw new IllegalArgumentException(
-                 "connection is null"
-         );
-      }
+          throw new IllegalArgumentException( "connection is null" );
 
       this.connection = connection;
       this.eventBus = eventBus;
 
-      /*
-       * Один lifecycle manager строго
-       * на один physical JDBC Connection.
-       */
-      lifecycle =
-              new JdbcLifecycleManager();
    }
 
 
@@ -121,15 +106,6 @@ public final class JdbcConnectionProxy
    public Connection proxy()
    {
       return proxy;
-   }
-
-
-   /**
-    * Connection ID в lifecycle hierarchy.
-    */
-   public long connectionId()
-   {
-      return lifecycle.connectionId();
    }
 
 
@@ -338,17 +314,18 @@ public final class JdbcConnectionProxy
        */
       if( "setAutoCommit".equals(methodName) )
       {
-         Object value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
-
-         syncStatements();
-
-         return value;
+         try
+         {
+            return invokeRaw(
+                    method,
+                    args
+            );
+         }
+         finally
+         {
+            syncStatements();
+         }
       }
-
       /*
        * unwrap(Connection.class) должен оставить
        * клиента внутри proxy.
@@ -1043,11 +1020,7 @@ public final class JdbcConnectionProxy
 
       if( "toString".equals(methodName) )
       {
-         return "JdbcConnectionProxy["
-                 + JdbcObjectId.toString(
-                 connectionId()
-         )
-                 + "]";
+
       }
 
       throw new IllegalStateException(
@@ -1111,7 +1084,6 @@ public final class JdbcConnectionProxy
       safeFire(
               new JdbcEvent(
                       proxy,
-                      connectionId(),
                       type,
                       phase,
                       throwable

@@ -1,7 +1,5 @@
 package ru.inversion.tc.jdbc.event;
 
-import ru.inversion.tc.jdbc.internal.JdbcObjectId;
-
 import java.util.Collections;
 import java.util.Map;
 import java.util.TreeMap;
@@ -22,8 +20,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    private JdbcStatementEvent(
            Object source,
 
-           long statementId,
-
            EventType type,
            EventPhase phase,
 
@@ -40,17 +36,10 @@ public final class JdbcStatementEvent extends JdbcEvent
    {
       super(
               source,
-              statementId,
               type,
               phase,
               throwable
       );
-
-      if( !JdbcObjectId.isStatement(statementId) )
-         throw new IllegalArgumentException(
-                 "Invalid statementId: "
-                         + JdbcObjectId.toString(statementId)
-         );
 
       this.methodName    = methodName;
       this.sql           = sql;
@@ -58,13 +47,6 @@ public final class JdbcStatementEvent extends JdbcEvent
       this.outParameters = snapshot(outParameters);
       this.durationNanos = durationNanos;
    }
-
-
-   public long statementId()
-   {
-      return objectId();
-   }
-
 
    public String methodName()
    {
@@ -105,7 +87,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    {
       return new JdbcStatementEvent(
               source,
-              statementId,
 
               EventType.STATEMENT_OPEN,
               EventPhase.ON,
@@ -133,7 +114,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    {
       return new JdbcStatementEvent(
               source,
-              statementId,
 
               EventType.STATEMENT_EXECUTE,
               EventPhase.BEFORE,
@@ -163,7 +143,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    {
       return new JdbcStatementEvent(
               source,
-              statementId,
 
               EventType.STATEMENT_EXECUTE,
               EventPhase.AFTER,
@@ -193,7 +172,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    {
       return new JdbcStatementEvent(
               source,
-              statementId,
 
               EventType.STATEMENT_EXECUTE,
               EventPhase.ERROR,
@@ -219,7 +197,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    {
       return new JdbcStatementEvent(
               source,
-              statementId,
 
               EventType.STATEMENT_CLOSE,
               EventPhase.ON,
