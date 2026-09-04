@@ -1154,7 +1154,6 @@ public final class JdbcStatementProxy
       safeFire(
               JdbcStatementEvent.open(
                       proxy,
-                      statementId,
                       sql
               )
       );

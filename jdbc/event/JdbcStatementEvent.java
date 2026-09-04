@@ -81,7 +81,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    /** */
    public static JdbcStatementEvent open(
            Object source,
-           long statementId,
            String sql
    )
    {
@@ -106,7 +105,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    /** */
    public static JdbcStatementEvent beforeExecute(
            Object source,
-           long statementId,
            String methodName,
            String sql,
            Map<Integer, Object> inParameters
@@ -133,7 +131,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    /** */
    public static JdbcStatementEvent afterExecute(
            Object source,
-           long statementId,
            String methodName,
            String sql,
            Map<Integer, Object> inParameters,
@@ -162,7 +159,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    /** */
    public static JdbcStatementEvent executeError(
            Object source,
-           long statementId,
            String methodName,
            String sql,
            Map<Integer, Object> inParameters,
@@ -191,7 +187,6 @@ public final class JdbcStatementEvent extends JdbcEvent
    /** */
    public static JdbcStatementEvent close(
            Object source,
-           long statementId,
            String sql
    )
    {

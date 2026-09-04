@@ -1020,7 +1020,7 @@ public final class JdbcConnectionProxy
 
       if( "toString".equals(methodName) )
       {
-
+         return "JdbcConnectionProxy@" + Integer.toHexString( System.identityHashCode(proxy) );
       }
 
       throw new IllegalStateException(

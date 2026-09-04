@@ -41,7 +41,6 @@ public final class JdbcResultSetEvent extends JdbcEvent
    /** */
    public static JdbcResultSetEvent open(
            Object source,
-           long resultSetId,
            int openResultSetCount
    )
    {
@@ -56,7 +55,6 @@ public final class JdbcResultSetEvent extends JdbcEvent
    /** */
    public static JdbcResultSetEvent close(
            Object source,
-           long resultSetId,
            int openResultSetCount
    )
    {

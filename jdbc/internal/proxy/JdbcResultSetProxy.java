@@ -102,29 +102,26 @@ public final class JdbcResultSetProxy implements InvocationHandler
     * как завершена необходимая lifecycle-синхронизация.
     */
    static JdbcResultSetProxy create(
-           ResultSet resultSet,
-           JdbcStatementProxy statement,
-           JdbcLifecycleManager lifecycle,
-           JdbcEventBus eventBus
+      ResultSet resultSet,
+      JdbcStatementProxy statement,
+      JdbcLifecycleManager lifecycle,
+      JdbcEventBus eventBus
    )
    {
-      JdbcResultSetProxy handler =
-              new JdbcResultSetProxy(
-                      resultSet,
-                      statement,
-                      lifecycle,
-                      eventBus
-              );
+      JdbcResultSetProxy handler = new JdbcResultSetProxy( resultSet, statement, lifecycle, eventBus );
 
-         handler.proxy =
-                 (ResultSet) Proxy.newProxyInstance(
-                         JdbcResultSetProxy.class.getClassLoader(),
-                         new Class<?>[] { ResultSet.class },
-                         handler
-                 );
-
+      try
+      {
+         handler.proxy = (ResultSet) Proxy.newProxyInstance( JdbcResultSetProxy.class.getClassLoader(), new Class<?>[] { ResultSet.class }, handler );
          return handler;
+      }
+      catch( RuntimeException | Error ex )
+      {
+         lifecycle.unregisterCursor( handler.registration );
+         throw ex;
+      }
    }
+
 
    /** */
    ResultSet proxy()
@@ -297,43 +294,18 @@ public final class JdbcResultSetProxy implements InvocationHandler
               lifecycle.unregisterCursor(
                       registration
               );
-      /*
-       * С точки зрения этого handler-а ресурс
-       * после данного момента закрыт независимо
-       * от результата unregister.
-       */
+
       closed = true;
 
-      /*
-       * Удаляем handler из IdentityHashMap owner-а.
-       *
-       * Owner проверит identity handler-а,
-       * поэтому stale proxy не удалит новый объект,
-       * которому уже мог быть выдан тот же R-slot.
-       */
-      statement.cursorResultSetClosed(
-              this
-      );
+      statement.cursorResultSetClosed(this);
 
-      /*
-       * CLOSE event существует только для реально
-       * зарегистрированного cursor-а.
-       */
       if( removed )
          fireClose();
 
       /*
-       * raw ResultSet.close() мог привести к
-       * автоматическому Statement.close()
-       * из-за closeOnCompletion().
-       *
-       * Проверяем это ПОСЛЕ RESULT_SET_CLOSE,
-       * чтобы порядок событий был:
-       *
-       * RESULT_SET_CLOSE
-       * STATEMENT_CLOSE
+       * Неважно, почему Statement закрылся.
        */
-      statement.syncCloseOnCompletion();
+      statement.syncClosedState();
    }
 
 
@@ -440,12 +412,7 @@ public final class JdbcResultSetProxy implements InvocationHandler
          return;
       }
 
-      safeFire(
-              JdbcResultSetEvent.open(
-                      proxy,
-                      lifecycle.openCursorCount()
-              )
-      );
+      safeFire( JdbcResultSetEvent.open( proxy, lifecycle.openCursorCount() ) );
    }
 
 
@@ -465,7 +432,6 @@ public final class JdbcResultSetProxy implements InvocationHandler
       safeFire(
               JdbcResultSetEvent.close(
                       proxy,
-                      resultSetId,
                       lifecycle.openCursorCount()
               )
       );
