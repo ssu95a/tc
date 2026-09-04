@@ -1,5 +1,7 @@
 package ru.inversion.tc.jdbc.event;
 
+import ru.inversion.tc.jdbc.internal.JdbcObjectId;
+
 import java.util.Collections;
 import java.util.Map;
 import java.util.TreeMap;
@@ -15,195 +17,235 @@ public final class JdbcStatementEvent extends JdbcEvent
 
    private final long durationNanos;
 
-   private final long statementId;
 
-   private JdbcStatementEvent (
-      Object source,
+   /** */
+   private JdbcStatementEvent(
+           Object source,
 
-      long connectionId,
-      long statementId,
+           long statementId,
 
-      EventType type,
-      EventPhase phase,
+           EventType type,
+           EventPhase phase,
 
-      String methodName,
-      String sql,
+           String methodName,
+           String sql,
 
-      Map<Integer, Object> inParameters,
-      Map<Integer, Object> outParameters,
+           Map<Integer, Object> inParameters,
+           Map<Integer, Object> outParameters,
 
-      long durationNanos,
+           long durationNanos,
 
-      Throwable throwable
+           Throwable throwable
    )
    {
-      super(source, connectionId, type, phase, throwable);
+      super(
+              source,
+              statementId,
+              type,
+              phase,
+              throwable
+      );
+
+      if( !JdbcObjectId.isStatement(statementId) )
+         throw new IllegalArgumentException(
+                 "Invalid statementId: "
+                         + JdbcObjectId.toString(statementId)
+         );
 
       this.methodName    = methodName;
       this.sql           = sql;
       this.inParameters  = snapshot(inParameters);
       this.outParameters = snapshot(outParameters);
       this.durationNanos = durationNanos;
-      this.statementId   = statementId;
    }
 
-   public long statementId() { return statementId;}
+
+   public long statementId()
+   {
+      return objectId();
+   }
+
 
    public String methodName()
    {
       return methodName;
    }
 
+
    public String sqlStatement()
    {
       return sql;
    }
+
 
    public Map<Integer, Object> inParameters()
    {
       return inParameters;
    }
 
+
    public Map<Integer, Object> outParameters()
    {
       return outParameters;
    }
+
 
    public long durationNanos()
    {
       return durationNanos;
    }
 
-   /*
-    * Statement создан.
-    * <p>
-    * sql == null для обычного createStatement().
-    */
-   public static JdbcStatementEvent open(
-      Object source,
-      long connectionId,
-      long statementId,
-      String sql
-   )
-   {
-      return new JdbcStatementEvent( source, connectionId, statementId, EventType.STATEMENT_OPEN, EventPhase.ON, null, sql, null, null, 0L, null );
-   }
 
-   /*
-    * Начало execute*().
-    */
-   public static JdbcStatementEvent beforeExecute (
-      Object source,
-        long connectionId,
-        long statementId,
-      String methodName,
-      String sql,
-      Map<Integer, Object> inParameters
+   /** */
+   public static JdbcStatementEvent open(
+           Object source,
+           long statementId,
+           String sql
    )
    {
       return new JdbcStatementEvent(
               source,
-              connectionId, statementId,
-              EventType.STATEMENT_EXECUTE,
-              EventPhase.BEFORE,
-              methodName,
-              sql,
-              inParameters,
+              statementId,
+
+              EventType.STATEMENT_OPEN,
+              EventPhase.ON,
+
               null,
+              sql,
+
+              null,
+              null,
+
               0L,
               null
       );
    }
 
 
-   /*
-    * Успешное завершение execute*().
-    */
-   public static JdbcStatementEvent afterExecute(
-      Object source,
-      long connectionId,
-      long statementId,
-      String methodName,
-      String sql,
-      Map<Integer, Object> inParameters,
-      Map<Integer, Object> outParameters,
-      long durationNanos
+   /** */
+   public static JdbcStatementEvent beforeExecute(
+           Object source,
+           long statementId,
+           String methodName,
+           String sql,
+           Map<Integer, Object> inParameters
    )
    {
       return new JdbcStatementEvent(
               source,
-              connectionId, statementId,
+              statementId,
+
               EventType.STATEMENT_EXECUTE,
-              EventPhase.AFTER,
+              EventPhase.BEFORE,
+
               methodName,
               sql,
+
+              inParameters,
+              null,
+
+              0L,
+              null
+      );
+   }
+
+
+   /** */
+   public static JdbcStatementEvent afterExecute(
+           Object source,
+           long statementId,
+           String methodName,
+           String sql,
+           Map<Integer, Object> inParameters,
+           Map<Integer, Object> outParameters,
+           long durationNanos
+   )
+   {
+      return new JdbcStatementEvent(
+              source,
+              statementId,
+
+              EventType.STATEMENT_EXECUTE,
+              EventPhase.AFTER,
+
+              methodName,
+              sql,
+
               inParameters,
               outParameters,
+
               durationNanos,
               null
       );
    }
 
 
-   /*
-    * Ошибка execute*().
-    */
+   /** */
    public static JdbcStatementEvent executeError(
-      Object source,
-      long connectionId,
-      long statementId,
-      String methodName,
-      String sql,
-      Map<Integer, Object> inParameters,
-      long durationNanos,
-      Throwable throwable
-   )
-   {
-      return new JdbcStatementEvent(
-           source,
-           connectionId, statementId,
-           EventType.STATEMENT_EXECUTE,
-           EventPhase.ERROR,
-           methodName,
-           sql,
-           inParameters,
-           null,
-           durationNanos,
-           throwable
-      );
-   }
-
-
-   /*
-    * Statement закрыт.
-    */
-   public static JdbcStatementEvent close(
-      Object source,
-      long connectionId,
-      long statementId,
-      String sql
+           Object source,
+           long statementId,
+           String methodName,
+           String sql,
+           Map<Integer, Object> inParameters,
+           long durationNanos,
+           Throwable throwable
    )
    {
       return new JdbcStatementEvent(
               source,
-              connectionId, statementId,
+              statementId,
+
+              EventType.STATEMENT_EXECUTE,
+              EventPhase.ERROR,
+
+              methodName,
+              sql,
+
+              inParameters,
+              null,
+
+              durationNanos,
+              throwable
+      );
+   }
+
+
+   /** */
+   public static JdbcStatementEvent close(
+           Object source,
+           long statementId,
+           String sql
+   )
+   {
+      return new JdbcStatementEvent(
+              source,
+              statementId,
+
               EventType.STATEMENT_CLOSE,
               EventPhase.ON,
+
               null,
               sql,
+
               null,
               null,
-              0,
+
+              0L,
               null
       );
    }
 
+
    /** */
-   private static Map<Integer, Object> snapshot( Map<Integer, Object> source )
+   private static Map<Integer, Object> snapshot(
+           Map<Integer, Object> source
+   )
    {
       if( source == null || source.isEmpty() )
-          return Collections.emptyMap();
+         return Collections.emptyMap();
 
-      return Collections.unmodifiableMap( new TreeMap<>(source) );
+      return Collections.unmodifiableMap(
+              new TreeMap<>(source)
+      );
    }
 }

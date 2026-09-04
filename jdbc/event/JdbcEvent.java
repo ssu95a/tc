@@ -2,68 +2,91 @@ package ru.inversion.tc.jdbc.event;
 
 import java.util.EventObject;
 
-public class JdbcEvent extends EventObject {
+/** */
+public class JdbcEvent extends EventObject
+{
+   private final long objectId;
 
-   private final EventType type;
+   private final EventType  type;
    private final EventPhase phase;
 
    private final long timestampNanos;
 
    private final Throwable throwable;
 
-   private final long connectionId;
-
    /** */
-   public JdbcEvent( Object source, long connectionId, EventType type, EventPhase phase )
+   public JdbcEvent(
+           Object source,
+           long objectId,
+           EventType type,
+           EventPhase phase
+   )
    {
-      this( source, connectionId, type, phase, null );
+      this(
+              source,
+              objectId,
+              type,
+              phase,
+              null
+      );
    }
 
+
    /** */
-   public JdbcEvent( Object source, long connectionId, EventType type, EventPhase phase, Throwable throwable )
+   public JdbcEvent(
+           Object source,
+           long objectId,
+           EventType type,
+           EventPhase phase,
+           Throwable throwable
+   )
    {
       super(source);
 
-      if( connectionId <= 0 )
-         throw new IllegalArgumentException("connectionId <= 0");
+      if( objectId <= 0 )
+         throw new IllegalArgumentException("objectId <= 0");
 
       if( type == null )
          throw new IllegalArgumentException("type is null");
 
       if( phase == null )
-          throw new IllegalArgumentException("phase is null");
+         throw new IllegalArgumentException("phase is null");
 
-      this.type         = type;
-      this.phase        = phase;
-      this.throwable    = throwable;
-      this.connectionId = connectionId;
+      this.objectId  = objectId;
+      this.type      = type;
+      this.phase     = phase;
+      this.throwable = throwable;
 
       this.timestampNanos = System.nanoTime();
    }
 
-   /** */
-   public long connectionId( )
+
+   public long objectId()
    {
-      return connectionId;
+      return objectId;
    }
 
-   /** */
-   public EventType type() {
+
+   public EventType type()
+   {
       return type;
    }
 
-   /** */
-   public EventPhase phase() {
+
+   public EventPhase phase()
+   {
       return phase;
    }
 
-   /** */
-   public long timestampNanos() {
+
+   public long timestampNanos()
+   {
       return timestampNanos;
    }
 
-   /** */
-   public Throwable throwable() {
+
+   public Throwable throwable()
+   {
       return throwable;
    }
 }

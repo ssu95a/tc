@@ -1,66 +1,79 @@
 package ru.inversion.tc.jdbc.event;
 
+import ru.inversion.tc.jdbc.internal.JdbcObjectId;
+
 /** */
 public final class JdbcResultSetEvent extends JdbcEvent
 {
-   private final long resultSetId;
-   private final long statementId;
-
    private final int openResultSetCount;
 
-   private JdbcResultSetEvent (
-        Object source,
-
-        long connectionId,
-        long statementId,
-        long resultSetId,
-
-        EventType type,
-
-        int openResultSetCount
+   /** */
+   private JdbcResultSetEvent(
+           Object source,
+           long resultSetId,
+           EventType type,
+           int openResultSetCount
    )
    {
-      super( source, connectionId, type, EventPhase.ON );
+      super(
+              source,
+              resultSetId,
+              type,
+              EventPhase.ON
+      );
 
-      if( statementId <= 0 )
-          throw new IllegalArgumentException("statementId <= 0");
-
-      if( resultSetId <= 0 )
-          throw new IllegalArgumentException("resultSetId <= 0");
+      if( !JdbcObjectId.isResultSet(resultSetId) )
+         throw new IllegalArgumentException(
+                 "Invalid resultSetId: "
+                         + JdbcObjectId.toString(resultSetId)
+         );
 
       if( openResultSetCount < 0 )
-         throw new IllegalArgumentException("openResultSetCount < 0");
+         throw new IllegalArgumentException(
+                 "openResultSetCount < 0"
+         );
 
-      this.resultSetId = resultSetId;
-      this.statementId = statementId;
-
-      this.openResultSetCount
-                       = openResultSetCount;
+      this.openResultSetCount =
+              openResultSetCount;
    }
+
 
    public long resultSetId()
    {
-      return resultSetId;
+      return objectId();
    }
 
+
+   /*
+    * Поле не храним.
+    * Родитель содержится внутри resultSetId.
+    */
    public long statementId()
    {
-      return statementId;
+      return JdbcObjectId.statementId(
+              resultSetId()
+      );
    }
+
 
    public int openResultSetCount()
    {
       return openResultSetCount;
    }
 
+
    /** */
-   public static JdbcResultSetEvent open( Object source, long connectionId, long statementId, long resultSetId, int openResultSetCount )
+   public static JdbcResultSetEvent open(
+           Object source,
+           long resultSetId,
+           int openResultSetCount
+   )
    {
       return new JdbcResultSetEvent(
-         source,
-         connectionId, statementId, resultSetId,
-         EventType.RESULT_SET_OPEN,
-         openResultSetCount
+              source,
+              resultSetId,
+              EventType.RESULT_SET_OPEN,
+              openResultSetCount
       );
    }
 
@@ -68,17 +81,15 @@ public final class JdbcResultSetEvent extends JdbcEvent
    /** */
    public static JdbcResultSetEvent close(
            Object source,
-           long connectionId,
            long resultSetId,
-           long statementId,
            int openResultSetCount
    )
    {
       return new JdbcResultSetEvent(
-         source,
-         connectionId, statementId, resultSetId,
-         EventType.RESULT_SET_CLOSE,
-         openResultSetCount
+              source,
+              resultSetId,
+              EventType.RESULT_SET_CLOSE,
+              openResultSetCount
       );
    }
 }
