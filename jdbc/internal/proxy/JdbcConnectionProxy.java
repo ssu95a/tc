@@ -5,6 +5,8 @@ import ru.inversion.tc.jdbc.event.EventType;
 import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
+import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionManager;
+import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionPolicy;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -14,7 +16,6 @@ import java.lang.reflect.Proxy;
 import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.Savepoint;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -61,6 +62,9 @@ public final class JdbcConnectionProxy
    private volatile boolean closed;
 
 
+   private final JdbcTransactionManager transactionManager;
+
+
    /** */
    private JdbcConnectionProxy( Connection connection, JdbcEventBus eventBus )
    {
@@ -69,6 +73,15 @@ public final class JdbcConnectionProxy
 
       this.connection = connection;
       this.eventBus = eventBus;
+
+      JdbcTransactionPolicy policy = JdbcTransactionPolicyFactory.create( connection );
+
+      transactionManager =
+              new JdbcTransactionManager(
+                      connection,     // RAW
+                      lifecycle,
+                      policy
+              );
 
    }
 
