@@ -5,9 +5,10 @@ import ru.inversion.tc.jdbc.event.EventType;
 import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupport;
+import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupportFactory;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionManager;
-import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionPolicy;
+
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -82,17 +83,10 @@ public final class JdbcConnectionProxy
 
       transactionManager =
               new JdbcTransactionManager(
-                      connection,
+                      connection,     // RAW
                       lifecycle,
                       support.transactionPolicy()
               );
-      transactionManager =
-              new JdbcTransactionManager(
-                      connection,     // RAW
-                      lifecycle,
-                      policy
-              );
-
    }
 
 
@@ -906,6 +900,8 @@ public final class JdbcConnectionProxy
       {
          statement.closedByConnection();
       }
+
+      lifecycle.transactionFinished();
 
       /*
        * Порядок событий:

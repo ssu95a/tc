@@ -5,6 +5,7 @@ import ru.inversion.tc.jdbc.internal.db.postgresql.PostgreSqlDatabaseSupport;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Locale;
 
 public final class JdbcDatabaseSupportFactory
 {
@@ -26,7 +27,7 @@ public final class JdbcDatabaseSupportFactory
             if( "PostgreSQL".equalsIgnoreCase(name) )
                 return new PostgreSqlDatabaseSupport();
 
-            if( name.toLowerCase().contains("oracle") )
+            if( name.toLowerCase(Locale.ROOT).contains("oracle") )
                 return new OracleDatabaseSupport();
          }
       }
