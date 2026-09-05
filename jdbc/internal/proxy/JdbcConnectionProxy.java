@@ -1179,7 +1179,7 @@ public final class JdbcConnectionProxy
             );
          }
       }
-      catch( SQLException ignored )
+      catch( SQLException | RuntimeException ignored  )
       {
          /*
           * Auto-finish is best effort.

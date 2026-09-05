@@ -302,12 +302,11 @@ public final class JdbcResultSetProxy implements InvocationHandler
       if( removed )
          fireClose();
 
-      /*
-       * Неважно, почему Statement закрылся.
-       */
       statement.syncClosedState();
-   }
 
+      if( removed )
+         statement.cursorStateChanged();
+   }
 
    /**
     * isClosed() синхронизирует lifecycle, если driver
