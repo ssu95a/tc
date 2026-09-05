@@ -4,6 +4,7 @@ import ru.inversion.tc.jdbc.event.EventPhase;
 import ru.inversion.tc.jdbc.event.EventType;
 import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
+import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupport;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionManager;
 import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionPolicy;
@@ -74,8 +75,17 @@ public final class JdbcConnectionProxy
       this.connection = connection;
       this.eventBus = eventBus;
 
-      JdbcTransactionPolicy policy = JdbcTransactionPolicyFactory.create( connection );
+      JdbcDatabaseSupport support =
+              JdbcDatabaseSupportFactory.create(
+                      connection
+              );
 
+      transactionManager =
+              new JdbcTransactionManager(
+                      connection,
+                      lifecycle,
+                      support.transactionPolicy()
+              );
       transactionManager =
               new JdbcTransactionManager(
                       connection,     // RAW

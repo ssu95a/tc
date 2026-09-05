@@ -56,10 +56,7 @@ public final class JdbcTransactionManager
        * Всё специфичное для конкретной СУБД —
        * только внутри policy.
        */
-      if( !policy.canFinishReadTransaction(
-              connection,
-              lifecycle
-      ) )
+      if( !policy.canFinishReadTransaction( connection ) )
       {
          return false;
       }

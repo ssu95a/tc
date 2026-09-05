@@ -7,53 +7,36 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-
-public final class PostgreSqlTransactionPolicy
-        implements JdbcTransactionPolicy
+/** */
+public final class PostgreSqlTransactionPolicy implements JdbcTransactionPolicy
 {
-   private static final String SQL_XACT_ID =
-           "select pg_current_xact_id_if_assigned()";
+   private static final String SQL_XACT_ID = "select pg_current_xact_id_if_assigned()";
 
 
    @Override
-   public boolean canFinishReadTransaction(
-           Connection connection
-   )
+   public boolean canFinishReadTransaction( Connection connection )
            throws SQLException
    {
-      if( connection.getTransactionIsolation()
-              != Connection.TRANSACTION_READ_COMMITTED )
+      if( connection.getTransactionIsolation() != Connection.TRANSACTION_READ_COMMITTED )
       {
          return false;
       }
 
-      return !hasAssignedTransactionId(
-              connection
-      );
+      return !hasAssignedTransactionId( connection );
    }
 
 
-   private boolean hasAssignedTransactionId(
-           Connection connection
-   )
-           throws SQLException
+   /** */
+   private boolean hasAssignedTransactionId( Connection connection ) throws SQLException
    {
-      try(
-              Statement statement =
-                      connection.createStatement()
-      )
+      try( Statement statement = connection.createStatement() )
       {
          statement.setFetchSize(0);
 
-         try(
-                 ResultSet resultSet =
-                         statement.executeQuery(
-                                 SQL_XACT_ID
-                         )
-         )
+         try( ResultSet resultSet = statement.executeQuery( SQL_XACT_ID ) )
          {
             if( !resultSet.next() )
-               return true;
+                 return true;
 
             return resultSet.getObject(1) != null;
          }
