@@ -1,6 +1,7 @@
 package ru.inversion.tc.jdbc.internal.lifecycle;
 
 import java.sql.ResultSet;
+import java.sql.Savepoint;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
@@ -14,6 +15,8 @@ public final class JdbcLifecycleManager
 {
    private final Map<ResultSet, CursorRegistration> cursors =
            new IdentityHashMap<>();
+
+   private final Map<Savepoint, Boolean> savepoints = new IdentityHashMap<>();
 
 
    /**
@@ -117,5 +120,29 @@ public final class JdbcLifecycleManager
       return cursors.get(
               registration.resultSet
       ) == registration;
+   }
+
+   public synchronized void savepointSet( Savepoint savepoint )
+   {
+      if( savepoint != null )
+          savepoints.put(savepoint, Boolean.TRUE);
+   }
+
+   public synchronized void savepointReleased( Savepoint savepoint )
+   {
+      if( savepoint != null )
+          savepoints.remove(savepoint);
+   }
+
+   /** */
+   public synchronized boolean hasSavepoints()
+   {
+      return !savepoints.isEmpty();
+   }
+
+   /** */
+   public synchronized void transactionFinished()
+   {
+      savepoints.clear();
    }
 }

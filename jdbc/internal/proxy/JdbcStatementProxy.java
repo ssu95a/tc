@@ -398,24 +398,10 @@ public final class JdbcStatementProxy
        */
       if( methodName.startsWith("execute") )
       {
-         return execute(
-                 method,
-                 args
-         );
+         return execute( method, args );
       }
 
-      /*
-       * В том числе сюда естественно попадают:
-       *
-       * closeOnCompletion()
-       * isCloseOnCompletion()
-       *
-       * Мы не моделируем closeOnCompletion самостоятельно.
-       */
-      return invokeRaw(
-              method,
-              args
-      );
+      return invokeRaw( method, args );
    }
 
 
@@ -596,7 +582,7 @@ public final class JdbcStatementProxy
          throw throwable;
       }
 
-      JdbcResultSetProxy newCursor = null;
+       newCursor = null;
 
       /*
        * При наличии нового ResultSet сначала
@@ -1172,7 +1158,6 @@ public final class JdbcStatementProxy
       safeFire(
               JdbcStatementEvent.beforeExecute(
                       proxy,
-                      statementId,
                       methodName,
                       sql,
                       inParameters
@@ -1197,7 +1182,6 @@ public final class JdbcStatementProxy
       safeFire(
               JdbcStatementEvent.afterExecute(
                       proxy,
-                      statementId,
                       methodName,
                       sql,
                       inParameters,
@@ -1222,7 +1206,6 @@ public final class JdbcStatementProxy
       safeFire(
               JdbcStatementEvent.executeError(
                       proxy,
-                      statementId,
                       methodName,
                       sql,
                       inParameters,
@@ -1242,7 +1225,6 @@ public final class JdbcStatementProxy
       safeFire(
               JdbcStatementEvent.close(
                       proxy,
-                      statementId,
                       sql
               )
       );
