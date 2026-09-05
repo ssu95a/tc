@@ -63,6 +63,8 @@ public final class JdbcConnectionProxy
     */
    private volatile boolean closed;
 
+   private int autoFinishSuspendDepth;
+
 
    private final JdbcTransactionManager transactionManager;
 
@@ -89,6 +91,27 @@ public final class JdbcConnectionProxy
               );
    }
 
+
+   private synchronized void suspendAutoFinish()
+   {
+      autoFinishSuspendDepth++;
+   }
+
+   private synchronized void resumeAutoFinish()
+   {
+      if( autoFinishSuspendDepth <= 0 )
+         throw new IllegalStateException(
+                 "Auto-finish is not suspended"
+         );
+
+      autoFinishSuspendDepth--;
+   }
+
+
+   private synchronized boolean isAutoFinishSuspended()
+   {
+      return autoFinishSuspendDepth != 0;
+   }
 
    /**
     * Создаёт handler + JDBC Connection proxy.
@@ -330,6 +353,10 @@ public final class JdbcConnectionProxy
        * синхронизируем Statement-ы.
        */
       if( "setAutoCommit".equals(methodName) ) {
+
+         suspendAutoFinish();
+
+
          boolean autoCommit =
                  (Boolean) args[0];
 
@@ -344,8 +371,17 @@ public final class JdbcConnectionProxy
                lifecycle.transactionFinished();
 
             return value;
-         } finally {
-            syncStatements();
+         }
+         finally
+         {
+            try
+            {
+               syncStatements();
+            }
+            finally
+            {
+               resumeAutoFinish();
+            }
          }
       }
       /*
@@ -569,6 +605,8 @@ public final class JdbcConnectionProxy
    )
            throws Throwable
    {
+      suspendAutoFinish();
+
       try
       {
          Object value =
@@ -606,6 +644,9 @@ public final class JdbcConnectionProxy
 
          throw throwable;
       }
+      finally {
+         resumeAutoFinish();
+      }
    }
 
 
@@ -618,6 +659,8 @@ public final class JdbcConnectionProxy
    )
            throws Throwable
    {
+      suspendAutoFinish();
+
       try
       {
          Object value =
@@ -652,6 +695,10 @@ public final class JdbcConnectionProxy
 
          throw throwable;
       }
+      finally {
+         resumeAutoFinish();
+      }
+
    }
 
 
@@ -664,6 +711,8 @@ public final class JdbcConnectionProxy
    )
            throws Throwable
    {
+      suspendAutoFinish();
+
       try
       {
          Object value =
@@ -697,6 +746,10 @@ public final class JdbcConnectionProxy
          );
 
          throw throwable;
+      }
+      finally
+      {
+         resumeAutoFinish();
       }
    }
 
@@ -1160,6 +1213,9 @@ public final class JdbcConnectionProxy
    void cursorStateChanged()
    {
       if( closed )
+         return;
+
+      if( isAutoFinishSuspended() )
          return;
 
       if( lifecycle.hasOpenCursors() )
