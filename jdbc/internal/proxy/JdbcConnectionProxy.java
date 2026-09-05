@@ -1157,5 +1157,37 @@ public final class JdbcConnectionProxy
       }
    }
 
+   void cursorStateChanged()
+   {
+      if( closed )
+         return;
+
+      if( lifecycle.hasOpenCursors() )
+         return;
+
+      try
+      {
+         boolean committed =
+                 transactionManager.tryFinishReadTransaction();
+
+         if( committed )
+         {
+            fire(
+                    EventType.TRANSACTION_COMMIT,
+                    EventPhase.AFTER,
+                    null
+            );
+         }
+      }
+      catch( SQLException ignored )
+      {
+         /*
+          * Auto-finish is best effort.
+          * Никакого rollback.
+          *
+          * TODO diagnostics.
+          */
+      }
+   }
 
 }

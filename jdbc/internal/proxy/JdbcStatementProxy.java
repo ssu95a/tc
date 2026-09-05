@@ -920,17 +920,12 @@ public final class JdbcStatementProxy
 
       closeCursorResultSetsByStatement();
 
-      /*
-       * Mandatory owner state.
-       */
       connection.statementClosed(this);
 
-      /*
-       * Observation.
-       */
       fireClose();
-   }
 
+      connection.cursorStateChanged();
+   }
    /**
     * Statement.isClosed().
     */
@@ -1272,5 +1267,13 @@ public final class JdbcStatementProxy
          return;
 
       statementClosed();
+   }
+
+   void cursorStateChanged()
+   {
+      if( closed )
+         return;
+
+      connection.cursorStateChanged();
    }
 }
