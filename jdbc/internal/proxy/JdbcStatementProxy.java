@@ -582,7 +582,7 @@ public final class JdbcStatementProxy
          throw throwable;
       }
 
-       newCursor = null;
+      JdbcResultSetProxy newCursor = null;
 
       /*
        * При наличии нового ResultSet сначала

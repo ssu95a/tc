@@ -312,17 +312,22 @@ public final class JdbcConnectionProxy
        * Поэтому после успешного вызова
        * синхронизируем Statement-ы.
        */
-      if( "setAutoCommit".equals(methodName) )
-      {
-         try
-         {
-            return invokeRaw(
-                    method,
-                    args
-            );
-         }
-         finally
-         {
+      if( "setAutoCommit".equals(methodName) ) {
+         boolean autoCommit =
+                 (Boolean) args[0];
+
+         try {
+            Object value =
+                    invokeRaw(
+                            method,
+                            args
+                    );
+
+            if (autoCommit)
+               lifecycle.transactionFinished();
+
+            return value;
+         } finally {
             syncStatements();
          }
       }
@@ -555,6 +560,7 @@ public final class JdbcConnectionProxy
                          args
                  );
 
+         lifecycle.transactionFinished();
          /*
           * COMMIT мог закрыть server cursor ResultSet.
           */
@@ -603,6 +609,7 @@ public final class JdbcConnectionProxy
                          args
                  );
 
+         lifecycle.transactionFinished();
          /*
           * ROLLBACK закрывает/инвалидирует cursor state.
           */
@@ -688,19 +695,29 @@ public final class JdbcConnectionProxy
    {
       try
       {
-         Object value =
-                 invokeRaw(
+         Savepoint savepoint =
+                 (Savepoint) invokeRaw(
                          method,
                          args
                  );
 
+         /*
+          * Mandatory correctness state.
+          */
+         lifecycle.savepointSet(
+                 savepoint
+         );
+
+         /*
+          * Observation.
+          */
          fire(
                  EventType.SAVEPOINT_SET,
                  EventPhase.AFTER,
                  null
          );
 
-         return value;
+         return savepoint;
       }
       catch( Throwable throwable )
       {
@@ -724,6 +741,9 @@ public final class JdbcConnectionProxy
    )
            throws Throwable
    {
+      Savepoint savepoint =
+              (Savepoint) args[0];
+
       try
       {
          Object value =
@@ -731,6 +751,10 @@ public final class JdbcConnectionProxy
                          method,
                          args
                  );
+
+         lifecycle.savepointReleased(
+                 savepoint
+         );
 
          fire(
                  EventType.SAVEPOINT_RELEASE,
@@ -751,7 +775,6 @@ public final class JdbcConnectionProxy
          throw throwable;
       }
    }
-
 
    /**
     * Явный Connection.close().
@@ -1114,4 +1137,6 @@ public final class JdbcConnectionProxy
           */
       }
    }
+
+
 }
