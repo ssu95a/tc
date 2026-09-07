@@ -59,6 +59,7 @@ public final class JdbcStatementProxy
    private final boolean prepared;
    private final boolean callable;
 
+   private boolean closing;
    /*
     * Последние успешно установленные
     * positional IN parameters.
@@ -780,21 +781,12 @@ public final class JdbcStatementProxy
     *
     * Identity handler-а защищает от stale proxy.
     */
-   void cursorResultSetClosed(
-           JdbcResultSetProxy resultSet
-   )
+   void cursorResultSetClosed( JdbcResultSetProxy resultSet )
    {
-      JdbcResultSetProxy current =
-              cursorResultSets.get(
-                      resultSet.raw()
-              );
+      JdbcResultSetProxy current = cursorResultSets.get( resultSet.raw() );
 
       if( current == resultSet )
-      {
-         cursorResultSets.remove(
-                 resultSet.raw()
-         );
-      }
+          cursorResultSets.remove( resultSet.raw() );
    }
 
 
@@ -916,16 +908,37 @@ public final class JdbcStatementProxy
       if( closed )
          return;
 
-      closed = true;
+      boolean hadCursorResultSets = !cursorResultSets.isEmpty();
 
-      closeCursorResultSetsByStatement();
+      closed  = true;
+      closing = true;
 
-      connection.statementClosed(this);
+      try
+      {
+         closeCursorResultSetsByStatement();
 
-      fireClose();
+         connection.statementClosed(this);
 
-      connection.cursorStateChanged();
+         fireClose();
+      }
+      finally
+      {
+         closing = false;
+      }
+
+      /*
+       * Auto-finish нужен только если Statement.close()
+       * действительно завершил cursor lifecycle.
+       *
+       * Для closeOnCompletion cursor уже удалён раньше
+       * в JdbcResultSetProxy.lifecycleClosed(), поэтому
+       * trigger придёт от ResultSet после syncClosedState().
+       */
+      if( hadCursorResultSets )
+         connection.cursorStateChanged();
    }
+
+
    /**
     * Statement.isClosed().
     */
@@ -1271,9 +1284,15 @@ public final class JdbcStatementProxy
 
    void cursorStateChanged()
    {
-      if( closed )
+      /*
+       * Во время Statement.close() ResultSet-ы
+       * закрываются пачкой.
+       *
+       * transaction trigger выполнит statementClosed()
+       * после RESULT_SET_CLOSE / STATEMENT_CLOSE.
+       */
+      if( closing )
          return;
 
       connection.cursorStateChanged();
-   }
-}
+   }}

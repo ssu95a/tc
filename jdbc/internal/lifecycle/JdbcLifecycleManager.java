@@ -13,8 +13,7 @@ import java.util.Map;
  */
 public final class JdbcLifecycleManager
 {
-   private final Map<ResultSet, CursorRegistration> cursors =
-           new IdentityHashMap<>();
+   private final Map<ResultSet, CursorRegistration> cursors = new IdentityHashMap<>();
 
    private final Map<Savepoint, Boolean> savepoints = new IdentityHashMap<>();
 
@@ -27,9 +26,7 @@ public final class JdbcLifecycleManager
    {
       private final ResultSet resultSet;
 
-      private CursorRegistration(
-              ResultSet resultSet
-      )
+      private CursorRegistration( ResultSet resultSet)
       {
          this.resultSet = resultSet;
       }
@@ -38,34 +35,23 @@ public final class JdbcLifecycleManager
 
    /**
     * Регистрирует cursor.
-    *
+    * <p>
     * Повторная регистрация того же raw ResultSet
     * возвращает существующую registration.
     */
-   public synchronized CursorRegistration registerCursor(
-           ResultSet resultSet
-   )
+   public synchronized CursorRegistration registerCursor( ResultSet resultSet )
    {
       if( resultSet == null )
-      {
-         throw new IllegalArgumentException(
-                 "resultSet is null"
-         );
-      }
+         throw new IllegalArgumentException( "resultSet is null" );
 
-      CursorRegistration current =
-              cursors.get(resultSet);
+      CursorRegistration current = cursors.get(resultSet);
 
       if( current != null )
-         return current;
+          return current;
 
-      CursorRegistration registration =
-              new CursorRegistration(resultSet);
+      CursorRegistration registration = new CursorRegistration(resultSet);
 
-      cursors.put(
-              resultSet,
-              registration
-      );
+      cursors.put( resultSet, registration );
 
       return registration;
    }
@@ -73,24 +59,20 @@ public final class JdbcLifecycleManager
 
    /**
     * Снимает именно эту registration.
-    *
+    * <p>
     * Stale registration безопасно вернёт false.
     */
-   public synchronized boolean unregisterCursor(
-           CursorRegistration registration
-   )
+   public synchronized boolean unregisterCursor( CursorRegistration registration )
    {
       if( registration == null )
-         return false;
+          return false;
 
-      ResultSet resultSet =
-              registration.resultSet;
+      ResultSet resultSet = registration.resultSet;
 
-      CursorRegistration current =
-              cursors.get(resultSet);
+      CursorRegistration current = cursors.get(resultSet);
 
       if( current != registration )
-         return false;
+          return false;
 
       cursors.remove(resultSet);
 
@@ -98,36 +80,39 @@ public final class JdbcLifecycleManager
    }
 
 
+   /** */
    public synchronized int openCursorCount()
    {
       return cursors.size();
    }
 
 
+   /** */
    public synchronized boolean hasOpenCursors()
    {
       return !cursors.isEmpty();
    }
 
 
-   public synchronized boolean isRegistered(
-           CursorRegistration registration
-   )
+   /** */
+   public synchronized boolean isRegistered( CursorRegistration registration )
    {
       if( registration == null )
          return false;
 
-      return cursors.get(
-              registration.resultSet
-      ) == registration;
+      return cursors.get( registration.resultSet ) == registration;
    }
 
+
+   /** */
    public synchronized void savepointSet( Savepoint savepoint )
    {
       if( savepoint != null )
           savepoints.put(savepoint, Boolean.TRUE);
    }
 
+
+   /** */
    public synchronized void savepointReleased( Savepoint savepoint )
    {
       if( savepoint != null )

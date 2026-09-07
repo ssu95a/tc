@@ -62,28 +62,18 @@ public final class JdbcResultSetProxy implements InvocationHandler
 
    private final JdbcLifecycleManager.CursorRegistration registration;
 
+
    /** */
-   private JdbcResultSetProxy(
-           ResultSet resultSet,
-           JdbcStatementProxy statement,
-           JdbcLifecycleManager lifecycle,
-           JdbcEventBus eventBus
-   )
+   private JdbcResultSetProxy( ResultSet resultSet, JdbcStatementProxy statement, JdbcLifecycleManager lifecycle, JdbcEventBus eventBus )
    {
       if( resultSet == null )
-         throw new IllegalArgumentException(
-                 "resultSet is null"
-         );
+          throw new IllegalArgumentException( "resultSet is null" );
 
       if( statement == null )
-         throw new IllegalArgumentException(
-                 "statement is null"
-         );
+          throw new IllegalArgumentException("statement is null" );
 
       if( lifecycle == null )
-         throw new IllegalArgumentException(
-                 "lifecycle is null"
-         );
+          throw new IllegalArgumentException( "lifecycle is null" );
 
       this.resultSet = resultSet;
       this.statement = statement;
@@ -149,39 +139,26 @@ public final class JdbcResultSetProxy implements InvocationHandler
 
 
    @Override
-   public Object invoke(
-           Object proxy,
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   public Object invoke( Object proxy, Method method, Object[] args ) throws Throwable
    {
-      String methodName =
-              method.getName();
+      final String methodName = method.getName();
 
       /*
        * Object identity нашего proxy никак
        * не зависит от equals/hashCode driver-а.
        */
-      if( Object.class.equals(method.getDeclaringClass()) )
+      if( Object.class.equals( method.getDeclaringClass() ) )
       {
-         return invokeObjectMethod(
-                 proxy,
-                 methodName,
-                 args
-         );
+         return invokeObjectMethod( proxy, methodName, args );
       }
 
-      if( "close".equals(methodName)
-              && method.getParameterTypes().length == 0 )
+      if( "close".equals(methodName) && method.getParameterTypes().length == 0 )
       {
          close();
-
          return null;
       }
 
-      if( "isClosed".equals(methodName)
-              && method.getParameterTypes().length == 0 )
+      if( "isClosed".equals(methodName) && method.getParameterTypes().length == 0 )
       {
          return isClosed();
       }
@@ -234,11 +211,10 @@ public final class JdbcResultSetProxy implements InvocationHandler
    /**
     * Явный ResultSet.close().
     */
-   private synchronized void close()
-           throws Throwable
+   private synchronized void close() throws Throwable
    {
       if( closed )
-         return;
+          return;
 
       try
       {
@@ -251,11 +227,9 @@ public final class JdbcResultSetProxy implements InvocationHandler
           * и одновременно вернуть ошибку.
           */
          if( isRawClosed() )
-            lifecycleClosed();
+             lifecycleClosed();
 
-         throw unwrapThrowable(
-                 throwable
-         );
+         throw unwrapThrowable( throwable );
       }
 
       lifecycleClosed();
@@ -290,22 +264,19 @@ public final class JdbcResultSetProxy implements InvocationHandler
       if( closed )
          return;
 
-      boolean removed =
-              lifecycle.unregisterCursor(
-                      registration
-              );
+      boolean removed = lifecycle.unregisterCursor( registration );
 
       closed = true;
 
       statement.cursorResultSetClosed(this);
 
       if( removed )
-         fireClose();
+          fireClose();
 
       statement.syncClosedState();
 
       if( removed )
-         statement.cursorStateChanged();
+          statement.cursorStateChanged();
    }
 
    /**
@@ -367,27 +338,20 @@ public final class JdbcResultSetProxy implements InvocationHandler
 
 
    /** */
-   private Object invokeObjectMethod(
-           Object proxy,
-           String methodName,
-           Object[] args
-   )
+   private Object invokeObjectMethod( Object proxy, String methodName, Object[] args )
    {
       if( "equals".equals(methodName) )
-         return proxy == args[0];
+          return proxy == args[0];
 
       if( "hashCode".equals(methodName) )
-         return System.identityHashCode(proxy);
+           return System.identityHashCode(proxy);
 
       if( "toString".equals(methodName) )
       {
          return "JdbcResultSetProxy[" + "]";
       }
 
-      throw new IllegalStateException(
-              "Unsupported Object method: "
-                      + methodName
-      );
+      throw new IllegalStateException( "Unsupported Object method: " + methodName );
    }
 
 
@@ -397,16 +361,14 @@ public final class JdbcResultSetProxy implements InvocationHandler
    synchronized void fireOpen()
    {
       if( openEventFired )
-         return;
+          return;
 
       openEventFired = true;
 
       if( eventBus == null )
-         return;
+          return;
 
-      if( !eventBus.hasListeners(
-              JdbcResultSetEvent.class
-      ) )
+      if( !eventBus.hasListeners( JdbcResultSetEvent.class ) )
       {
          return;
       }
@@ -419,33 +381,24 @@ public final class JdbcResultSetProxy implements InvocationHandler
    private void fireClose()
    {
       if( eventBus == null )
-         return;
+          return;
 
-      if( !eventBus.hasListeners(
-              JdbcResultSetEvent.class
-      ) )
+      if(!eventBus.hasListeners( JdbcResultSetEvent.class ) )
       {
          return;
       }
 
-      safeFire(
-              JdbcResultSetEvent.close(
-                      proxy,
-                      lifecycle.openCursorCount()
-              )
-      );
+      safeFire( JdbcResultSetEvent.close( proxy, lifecycle.openCursorCount() ) );
    }
 
 
    /**
     * Events являются observation-only.
-    *
+    * <p>
     * Ошибка listener-а не должна превращать
     * успешный JDBC operation в ошибку приложения.
     */
-   private void safeFire(
-           JdbcEvent event
-   )
+   private void safeFire( JdbcEvent event )
    {
       try
       {

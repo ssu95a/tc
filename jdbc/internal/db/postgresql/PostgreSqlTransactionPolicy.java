@@ -18,9 +18,7 @@ public final class PostgreSqlTransactionPolicy implements JdbcTransactionPolicy
            throws SQLException
    {
       if( connection.getTransactionIsolation() != Connection.TRANSACTION_READ_COMMITTED )
-      {
          return false;
-      }
 
       return !hasAssignedTransactionId( connection );
    }

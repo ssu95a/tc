@@ -6,21 +6,12 @@ import java.sql.Connection;
 import java.sql.SQLException;
 
 
-public final class OracleTransactionPolicy
-        implements JdbcTransactionPolicy
+public final class OracleTransactionPolicy implements JdbcTransactionPolicy
 {
    @Override
-   public boolean canFinishReadTransaction(
-           Connection connection
-   )
-           throws SQLException
+   public boolean canFinishReadTransaction( Connection connection ) throws SQLException
    {
-      /*
-       * Пока Oracle-specific механизм безопасного
-       * определения read-only transaction не реализован.
-       *
-       * Никогда автоматически не commit.
-       */
+      /* Для Oracle никогда автоматически не commit.*/
       return false;
    }
 }

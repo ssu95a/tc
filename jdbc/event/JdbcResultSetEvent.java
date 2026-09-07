@@ -6,32 +6,20 @@ public final class JdbcResultSetEvent extends JdbcEvent
 {
    private final int openResultSetCount;
 
-   /** */
-   private JdbcResultSetEvent(
-           Object source,
-           EventType type,
-           int openResultSetCount
-   )
-   {
-      super(
-              source,
-              type,
-              EventPhase.ON
-      );
 
+   /** */
+   private JdbcResultSetEvent( Object source, EventType type, int openResultSetCount )
+   {
+      super( source, type, EventPhase.ON );
 
       if( openResultSetCount < 0 )
-         throw new IllegalArgumentException(
-                 "openResultSetCount < 0"
-         );
+          throw new IllegalArgumentException( "openResultSetCount < 0" );
 
-      this.openResultSetCount =
-              openResultSetCount;
+      this.openResultSetCount = openResultSetCount;
    }
 
 
-
-
+   /** */
    public int openResultSetCount()
    {
       return openResultSetCount;
@@ -39,29 +27,15 @@ public final class JdbcResultSetEvent extends JdbcEvent
 
 
    /** */
-   public static JdbcResultSetEvent open(
-           Object source,
-           int openResultSetCount
-   )
+   public static JdbcResultSetEvent open( Object source, int openResultSetCount )
    {
-      return new JdbcResultSetEvent(
-              source,
-              EventType.RESULT_SET_OPEN,
-              openResultSetCount
-      );
+      return new JdbcResultSetEvent( source, EventType.RESULT_SET_OPEN, openResultSetCount );
    }
 
 
    /** */
-   public static JdbcResultSetEvent close(
-           Object source,
-           int openResultSetCount
-   )
+   public static JdbcResultSetEvent close( Object source, int openResultSetCount )
    {
-      return new JdbcResultSetEvent(
-              source,
-              EventType.RESULT_SET_CLOSE,
-              openResultSetCount
-      );
+      return new JdbcResultSetEvent( source, EventType.RESULT_SET_CLOSE, openResultSetCount );
    }
 }

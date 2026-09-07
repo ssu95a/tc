@@ -29,8 +29,8 @@ public final class JdbcTransactionManager
          throw new IllegalArgumentException("policy is null");
 
       this.connection = connection;
-      this.lifecycle = lifecycle;
-      this.policy = policy;
+      this.lifecycle  = lifecycle;
+      this.policy     = policy;
    }
 
 

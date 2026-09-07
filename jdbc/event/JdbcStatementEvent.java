@@ -15,7 +15,6 @@ public final class JdbcStatementEvent extends JdbcEvent
 
    private final long durationNanos;
 
-
    /** */
    private JdbcStatementEvent(
            Object source,
@@ -34,12 +33,7 @@ public final class JdbcStatementEvent extends JdbcEvent
            Throwable throwable
    )
    {
-      super(
-              source,
-              type,
-              phase,
-              throwable
-      );
+      super( source, type, phase, throwable );
 
       this.methodName    = methodName;
       this.sql           = sql;
@@ -79,10 +73,7 @@ public final class JdbcStatementEvent extends JdbcEvent
 
 
    /** */
-   public static JdbcStatementEvent open(
-           Object source,
-           String sql
-   )
+   public static JdbcStatementEvent open( Object source, String sql )
    {
       return new JdbcStatementEvent(
               source,
@@ -104,10 +95,7 @@ public final class JdbcStatementEvent extends JdbcEvent
 
    /** */
    public static JdbcStatementEvent beforeExecute(
-           Object source,
-           String methodName,
-           String sql,
-           Map<Integer, Object> inParameters
+      Object source, String methodName, String sql, Map<Integer, Object> inParameters
    )
    {
       return new JdbcStatementEvent(
@@ -130,12 +118,12 @@ public final class JdbcStatementEvent extends JdbcEvent
 
    /** */
    public static JdbcStatementEvent afterExecute(
-           Object source,
-           String methodName,
-           String sql,
-           Map<Integer, Object> inParameters,
-           Map<Integer, Object> outParameters,
-           long durationNanos
+      Object source,
+      String methodName,
+      String sql,
+      Map<Integer, Object> inParameters,
+      Map<Integer, Object> outParameters,
+      long durationNanos
    )
    {
       return new JdbcStatementEvent(
@@ -158,12 +146,12 @@ public final class JdbcStatementEvent extends JdbcEvent
 
    /** */
    public static JdbcStatementEvent executeError(
-           Object source,
-           String methodName,
-           String sql,
-           Map<Integer, Object> inParameters,
-           long durationNanos,
-           Throwable throwable
+      Object source,
+      String methodName,
+      String sql,
+      Map<Integer, Object> inParameters,
+      long durationNanos,
+      Throwable throwable
    )
    {
       return new JdbcStatementEvent(
@@ -185,10 +173,7 @@ public final class JdbcStatementEvent extends JdbcEvent
 
 
    /** */
-   public static JdbcStatementEvent close(
-           Object source,
-           String sql
-   )
+   public static JdbcStatementEvent close( Object source, String sql )
    {
       return new JdbcStatementEvent(
               source,
@@ -209,15 +194,11 @@ public final class JdbcStatementEvent extends JdbcEvent
 
 
    /** */
-   private static Map<Integer, Object> snapshot(
-           Map<Integer, Object> source
-   )
+   private static Map<Integer, Object> snapshot( Map<Integer, Object> source )
    {
       if( source == null || source.isEmpty() )
          return Collections.emptyMap();
 
-      return Collections.unmodifiableMap(
-              new TreeMap<>(source)
-      );
+      return Collections.unmodifiableMap( new TreeMap<>(source) );
    }
 }

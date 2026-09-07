@@ -1223,8 +1223,7 @@ public final class JdbcConnectionProxy
 
       try
       {
-         boolean committed =
-                 transactionManager.tryFinishReadTransaction();
+         boolean committed = transactionManager.tryFinishReadTransaction();
 
          if( committed )
          {

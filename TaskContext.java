@@ -20,6 +20,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import ru.inversion.tc.jdbc.internal.proxy.JdbcConnectionProxy;
 
 /**
  * Одно соединение к БД
@@ -81,6 +82,8 @@ public class TaskContext implements AutoCloseable {
             TCStorage.INSTANCE().add(this);
 
             logger.debug("TaskContext successfully created. session ID: " + sessionId);
+
+            Connection jdbcConnection = JdbcConnectionProxy.create( c, null ).proxy();
 
 		}
 		catch( Throwable ex ) {

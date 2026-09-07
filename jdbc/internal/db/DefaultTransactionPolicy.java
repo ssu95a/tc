@@ -4,13 +4,10 @@ import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionPolicy;
 
 import java.sql.Connection;
 
-public final class DefaultTransactionPolicy
-        implements JdbcTransactionPolicy
+public final class DefaultTransactionPolicy implements JdbcTransactionPolicy
 {
    @Override
-   public boolean canFinishReadTransaction(
-           Connection connection
-   )
+   public boolean canFinishReadTransaction( Connection connection )
    {
       return false;
    }
