@@ -28,13 +28,13 @@ import ru.inversion.tc.jdbc.internal.proxy.JdbcConnectionProxy;
  */
 public class TaskContext implements AutoCloseable {
     
-	private Connection          connection;
+    private Connection          connection;
     private final Long          sessionId;
     private final QueryDBTracer queryDBTracer;
 
     static final private Logger logger = LoggerFactory.getLogger("ru.inversion.sql");
 
-    private Map<String,Object> properties;
+    private Map<String,Object>  properties;
 
     // savePoints support
     private static final AtomicInteger SAVEPOINT_ID_GENERATOR = new AtomicInteger();
@@ -47,11 +47,11 @@ public class TaskContext implements AutoCloseable {
     /**  */
     public TaskContext( String login, String password, String url ) {
 
-	    logger.debug("new TaskContext ...");
+        logger.debug("new TaskContext ...");
 
         Connection c = null;
 
-		try {
+        try {
 
             c = createConnection( login, password, url );
 
@@ -76,30 +76,29 @@ public class TaskContext implements AutoCloseable {
                     return null;
                 }
             });
-            
-            connection = QueryDBTracerConnection.newInstance( c, queryDBTracer );
-            
-            TCStorage.INSTANCE().add(this);
-
-            logger.debug("TaskContext successfully created. session ID: " + sessionId);
 
             Connection jdbcConnection = JdbcConnectionProxy.create( c, null ).proxy();
 
-		}
-		catch( Throwable ex ) {
+            connection = QueryDBTracerConnection.newInstance( jdbcConnection, queryDBTracer );
+
+            TCStorage.INSTANCE().add(this);
+
+            logger.debug("TaskContext successfully created. session ID: {}", sessionId);
+        }
+		  catch( Throwable ex ) {
             
             try {
 
                 if( c != null && !c.isClosed() ) {
-                    c.close();
+                    c.close(); }
                 }
-            }
+
             catch( SQLException ignored ) {
             }
             
-			throw new RuntimeException( Tags.PRODUCT_LABEL + "Error on create TaskContext", ex );
-		}
-	}
+            throw new RuntimeException( Tags.PRODUCT_LABEL + "Error on create TaskContext", ex );
+        }
+    }
 
     /** */
     private static Connection createConnection( String login, String password, String url ) throws SQLException {
