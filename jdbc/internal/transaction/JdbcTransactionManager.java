@@ -1,6 +1,7 @@
 package ru.inversion.tc.jdbc.internal.transaction;
 
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
+import ru.inversion.utils.Checks;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -12,21 +13,13 @@ public final class JdbcTransactionManager
    private final JdbcLifecycleManager lifecycle;
    private final JdbcTransactionPolicy policy;
 
-
    public JdbcTransactionManager(
-           Connection connection,
-           JdbcLifecycleManager lifecycle,
-           JdbcTransactionPolicy policy
+      Connection connection,
+      JdbcLifecycleManager lifecycle,
+      JdbcTransactionPolicy policy
    )
    {
-      if( connection == null )
-         throw new IllegalArgumentException("connection is null");
-
-      if( lifecycle == null )
-         throw new IllegalArgumentException("lifecycle is null");
-
-      if( policy == null )
-         throw new IllegalArgumentException("policy is null");
+      Checks.Require.objects( connection, "connection", lifecycle, "lifecycle", policy, "policy" );
 
       this.connection = connection;
       this.lifecycle  = lifecycle;
@@ -34,23 +27,23 @@ public final class JdbcTransactionManager
    }
 
 
-   public synchronized boolean tryFinishReadTransaction()
-           throws SQLException
+   /** */
+   public synchronized boolean tryFinishReadTransaction( ) throws SQLException
    {
       /*
        * Универсальные JDBC/lifecycle ограничения.
        */
       if( lifecycle.hasOpenCursors() )
-         return false;
+          return false;
 
       if( lifecycle.hasSavepoints() )
-         return false;
+          return false;
 
       if( connection.isClosed() )
-         return false;
+          return false;
 
       if( connection.getAutoCommit() )
-         return false;
+          return false;
 
       /*
        * Всё специфичное для конкретной СУБД —

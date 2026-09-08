@@ -64,14 +64,12 @@ public final class JdbcStatementProxy
     * Последние успешно установленные
     * positional IN parameters.
     */
-   private final Map<Integer, Object> inParameters =
-           new TreeMap<>();
+   private final Map<Integer, Object> inParameters = new TreeMap<>();
 
    /*
     * Positional OUT parameters CallableStatement.
     */
-   private final Set<Integer> outParameters =
-           new TreeSet<>();
+   private final Set<Integer> outParameters = new TreeSet<>();
 
    /*
     * Только Statement-owned cursor ResultSet.
@@ -91,66 +89,42 @@ public final class JdbcStatementProxy
 
 
    /** */
-   private JdbcStatementProxy(
-           Statement statement,
-           JdbcConnectionProxy connection,
-           String sql,
-           JdbcLifecycleManager lifecycle,
-           JdbcEventBus eventBus
+   private JdbcStatementProxy (
+      Statement statement,
+      JdbcConnectionProxy connection,
+      String sql,
+      JdbcLifecycleManager lifecycle,
+      JdbcEventBus eventBus
    )
    {
       if( statement == null )
-      {
-         throw new IllegalArgumentException(
-                 "statement is null"
-         );
-      }
-
+         throw new IllegalArgumentException( "statement is null" );
       if( connection == null )
-      {
-         throw new IllegalArgumentException(
-                 "connection is null"
-         );
-      }
-
+         throw new IllegalArgumentException( "connection is null" );
       if( lifecycle == null )
-      {
-         throw new IllegalArgumentException(
-                 "lifecycle is null"
-         );
-      }
+         throw new IllegalArgumentException( "lifecycle is null" );
 
       this.statement = statement;
-      this.connection = connection;
+      this.connection= connection;
       this.lifecycle = lifecycle;
-      this.eventBus = eventBus;
-      this.sql = sql;
+      this.eventBus  = eventBus;
+      this.sql       = sql;
 
-      prepared =
-              statement instanceof PreparedStatement;
-
-      callable =
-              statement instanceof CallableStatement;
+      prepared = statement instanceof PreparedStatement;
+      callable = statement instanceof CallableStatement;
    }
 
 
    /** */
    static JdbcStatementProxy create(
-           Statement statement,
-           JdbcConnectionProxy connection,
-           String sql,
-           JdbcLifecycleManager lifecycle,
-           JdbcEventBus eventBus
+      Statement statement,
+      JdbcConnectionProxy connection,
+      String sql,
+      JdbcLifecycleManager lifecycle,
+      JdbcEventBus eventBus
    )
    {
-      JdbcStatementProxy handler =
-              new JdbcStatementProxy(
-                      statement,
-                      connection,
-                      sql,
-                      lifecycle,
-                      eventBus
-              );
+      JdbcStatementProxy handler = new JdbcStatementProxy( statement, connection, sql, lifecycle, eventBus );
 
       Class<?> jdbcInterface;
 
@@ -906,7 +880,7 @@ public final class JdbcStatementProxy
    private void statementClosed()
    {
       if( closed )
-         return;
+          return;
 
       boolean hadCursorResultSets = !cursorResultSets.isEmpty();
 
@@ -974,10 +948,10 @@ public final class JdbcStatementProxy
    void syncClosedState()
    {
       if( closed )
-         return;
+          return;
 
       if( isRawStatementClosed() )
-         statementClosed();
+          statementClosed();
    }
 
 
@@ -1000,9 +974,7 @@ public final class JdbcStatementProxy
 
 
    /** */
-   private static boolean isRawResultSetClosed(
-           ResultSet resultSet
-   )
+   private static boolean isRawResultSetClosed( ResultSet resultSet )
    {
       try
       {
@@ -1022,16 +994,12 @@ public final class JdbcStatementProxy
    /**
     * SQL конкретного execute*().
     */
-   private String sql(
-           Object[] args
-   )
+   private String sql( Object[] args )
    {
       /*
        * Statement.execute*(String,...)
        */
-      if( args != null
-              && args.length > 0
-              && args[0] instanceof String )
+      if( args != null && args.length > 0 && args[0] instanceof String )
       {
          return (String) args[0];
       }
@@ -1049,26 +1017,20 @@ public final class JdbcStatementProxy
     */
    private Map<Integer, Object> outParameterValues()
    {
-      if( !callable
-              || outParameters.isEmpty() )
+      if( !callable || outParameters.isEmpty() )
       {
          return Collections.emptyMap();
       }
 
-      Map<Integer, Object> result =
-              new TreeMap<>();
+      Map<Integer, Object> result = new TreeMap<>();
 
-      CallableStatement callableStatement =
-              (CallableStatement) statement;
+      CallableStatement callableStatement = (CallableStatement) statement;
 
       for( Integer index : outParameters )
       {
          try
          {
-            result.put(
-                    index,
-                    callableStatement.getObject(index)
-            );
+            result.put( index, callableStatement.getObject(index) );
          }
          catch( SQLException ignored )
          {
@@ -1084,31 +1046,22 @@ public final class JdbcStatementProxy
 
 
    /** */
-   private Object invokeRaw(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object invokeRaw( Method method, Object[] args ) throws Throwable
    {
-      try
-      {
-         return method.invoke(
-                 statement,
-                 args
-         );
+      try {
+         return method.invoke( statement, args );
       }
-      catch( InvocationTargetException ex )
-      {
+      catch( InvocationTargetException ex ) {
          throw ex.getCause();
       }
    }
 
 
    /** */
-   private Object invokeObjectMethod(
-           Object proxy,
-           String methodName,
-           Object[] args
+   private Object invokeObjectMethod (
+        Object proxy,
+        String methodName,
+        Object[] args
    )
    {
       if( "equals".equals(methodName) )
@@ -1118,24 +1071,16 @@ public final class JdbcStatementProxy
          return System.identityHashCode(proxy);
 
       if( "toString".equals(methodName) )
-      {
-         return "JdbcStatementProxy@" + Integer.toHexString( System.identityHashCode(proxy) );
-      }
+          return "JdbcStatementProxy@" + Integer.toHexString( System.identityHashCode(proxy) );
 
-      throw new IllegalStateException(
-              "Unsupported Object method: "
-                      + methodName
-      );
+      throw new IllegalStateException( "Unsupported Object method: " + methodName );
    }
 
 
    /** */
    private boolean hasStatementListeners()
    {
-      return eventBus != null
-              && eventBus.hasListeners(
-              JdbcStatementEvent.class
-      );
+      return eventBus != null && eventBus.hasListeners( JdbcStatementEvent.class );
    }
 
 
@@ -1145,82 +1090,43 @@ public final class JdbcStatementProxy
       if( !hasStatementListeners() )
          return;
 
-      safeFire(
-              JdbcStatementEvent.open(
-                      proxy,
-                      sql
-              )
-      );
+      safeFire( JdbcStatementEvent.open( proxy, sql ) );
    }
 
 
    /** */
-   private void fireBeforeExecute(
-           String methodName,
-           String sql
-   )
+   private void fireBeforeExecute( String methodName, String sql )
    {
       if( !hasStatementListeners() )
          return;
 
-      safeFire(
-              JdbcStatementEvent.beforeExecute(
-                      proxy,
-                      methodName,
-                      sql,
-                      inParameters
-              )
-      );
+      safeFire( JdbcStatementEvent.beforeExecute( proxy, methodName, sql, inParameters ));
    }
 
 
    /** */
-   private void fireAfterExecute(
-           String methodName,
-           String sql,
-           long durationNanos
-   )
+   private void fireAfterExecute( String methodName, String sql, long durationNanos )
    {
       if( !hasStatementListeners() )
          return;
 
-      Map<Integer, Object> out =
-              outParameterValues();
+      Map<Integer, Object> out = outParameterValues();
 
-      safeFire(
-              JdbcStatementEvent.afterExecute(
-                      proxy,
-                      methodName,
-                      sql,
-                      inParameters,
-                      out,
-                      durationNanos
-              )
-      );
+      safeFire( JdbcStatementEvent.afterExecute( proxy, methodName, sql, inParameters, out, durationNanos ) );
    }
 
 
    /** */
    private void fireExecuteError(
-           String methodName,
-           String sql,
-           long durationNanos,
-           Throwable throwable
+      String methodName,
+      String sql,
+      long durationNanos,
+      Throwable throwable
    )
    {
       if( !hasStatementListeners() )
          return;
-
-      safeFire(
-              JdbcStatementEvent.executeError(
-                      proxy,
-                      methodName,
-                      sql,
-                      inParameters,
-                      durationNanos,
-                      throwable
-              )
-      );
+      safeFire( JdbcStatementEvent.executeError( proxy, methodName, sql, inParameters, durationNanos, throwable ) );
    }
 
 
@@ -1228,14 +1134,9 @@ public final class JdbcStatementProxy
    private void fireClose()
    {
       if( !hasStatementListeners() )
-         return;
+          return;
 
-      safeFire(
-              JdbcStatementEvent.close(
-                      proxy,
-                      sql
-              )
-      );
+      safeFire( JdbcStatementEvent.close( proxy, sql ) );
    }
 
 
@@ -1247,9 +1148,7 @@ public final class JdbcStatementProxy
     *
     * Error намеренно не перехватываем.
     */
-   private void safeFire(
-           JdbcEvent event
-   )
+   private void safeFire( JdbcEvent event )
    {
       try
       {
@@ -1264,16 +1163,20 @@ public final class JdbcStatementProxy
       }
    }
 
+
+   /** */
    void syncConnectionState()
    {
       if( closed )
-         return;
+          return;
 
       reconcileCursorResultSets();
 
       syncClosedState();
    }
 
+
+   /** */
    void closedByConnection()
    {
       if( closed )
@@ -1282,6 +1185,8 @@ public final class JdbcStatementProxy
       statementClosed();
    }
 
+
+   /** */
    void cursorStateChanged()
    {
       /*
@@ -1292,7 +1197,8 @@ public final class JdbcStatementProxy
        * после RESULT_SET_CLOSE / STATEMENT_CLOSE.
        */
       if( closing )
-         return;
+          return;
 
       connection.cursorStateChanged();
-   }}
+   }
+}

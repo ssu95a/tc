@@ -7,6 +7,6 @@ import java.sql.SQLException;
 /** */
 public interface JdbcTransactionPolicy
 {
-   /** Можем ли читать состояние транзакции */
+   /** Можем ли завершить транзакцию */
    boolean canFinishReadTransaction( Connection connection ) throws SQLException;
 }

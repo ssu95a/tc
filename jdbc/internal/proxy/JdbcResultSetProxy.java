@@ -60,7 +60,7 @@ public final class JdbcResultSetProxy implements InvocationHandler
     */
    private boolean openEventFired;
 
-   private final JdbcLifecycleManager.CursorRegistration registration;
+   private final JdbcLifecycleManager.CursorReg registration;
 
 
    /** */
@@ -129,7 +129,7 @@ public final class JdbcResultSetProxy implements InvocationHandler
 
    /**
     * Только локальный lifecycle state.
-    *
+    * <p>
     * Driver здесь не опрашиваем.
     */
    boolean isLifecycleClosed()
@@ -138,11 +138,11 @@ public final class JdbcResultSetProxy implements InvocationHandler
    }
 
 
+   /** */
    @Override
    public Object invoke( Object proxy, Method method, Object[] args ) throws Throwable
    {
       final String methodName = method.getName();
-
       /*
        * Object identity нашего proxy никак
        * не зависит от equals/hashCode driver-а.
@@ -164,11 +164,9 @@ public final class JdbcResultSetProxy implements InvocationHandler
       }
 
       /*
-       * Никогда не выпускаем raw Statement
-       * через tracked cursor ResultSet.
+       * Никогда не выпускаем raw Statement через tracked cursor ResultSet.
        */
-      if( "getStatement".equals(methodName)
-              && method.getParameterTypes().length == 0 )
+      if( "getStatement".equals(methodName) && method.getParameterTypes().length == 0 )
       {
          return statement.proxy();
       }
@@ -179,32 +177,22 @@ public final class JdbcResultSetProxy implements InvocationHandler
        *
        * Vendor-specific unwrap делегируется driver-у.
        */
-      if( "unwrap".equals(methodName)
-              && args != null
-              && args.length == 1 )
+      if( "unwrap".equals(methodName) && args != null && args.length == 1 )
       {
-         Class<?> clazz =
-                 (Class<?>) args[0];
+         Class<?> clazz = (Class<?>) args[0];
 
          if( clazz.isInstance(proxy) )
-            return clazz.cast(proxy);
+             return clazz.cast(proxy);
       }
 
-      if( "isWrapperFor".equals(methodName)
-              && args != null
-              && args.length == 1 )
+      if( "isWrapperFor".equals(methodName) && args != null && args.length == 1 )
       {
-         Class<?> clazz =
-                 (Class<?>) args[0];
-
+         Class<?> clazz = (Class<?>) args[0];
          if( clazz.isInstance(proxy) )
-            return true;
+             return true;
       }
 
-      return invokeRaw(
-              method,
-              args
-      );
+      return invokeRaw( method, args );
    }
 
 
@@ -215,7 +203,6 @@ public final class JdbcResultSetProxy implements InvocationHandler
    {
       if( closed )
           return;
-
       try
       {
          resultSet.close();

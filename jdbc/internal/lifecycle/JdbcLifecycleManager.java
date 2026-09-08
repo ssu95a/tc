@@ -13,20 +13,19 @@ import java.util.Map;
  */
 public final class JdbcLifecycleManager
 {
-   private final Map<ResultSet, CursorRegistration> cursors = new IdentityHashMap<>();
+   private final Map<ResultSet, CursorReg>  cursors = new IdentityHashMap<>();
 
    private final Map<Savepoint, Boolean> savepoints = new IdentityHashMap<>();
-
 
    /**
     * Registration identity используется для защиты
     * от stale JdbcResultSetProxy.
     */
-   public static final class CursorRegistration
+   public static final class CursorReg
    {
       private final ResultSet resultSet;
 
-      private CursorRegistration( ResultSet resultSet)
+      private CursorReg(ResultSet resultSet)
       {
          this.resultSet = resultSet;
       }
@@ -39,17 +38,17 @@ public final class JdbcLifecycleManager
     * Повторная регистрация того же raw ResultSet
     * возвращает существующую registration.
     */
-   public synchronized CursorRegistration registerCursor( ResultSet resultSet )
+   public synchronized CursorReg registerCursor( ResultSet resultSet )
    {
       if( resultSet == null )
          throw new IllegalArgumentException( "resultSet is null" );
 
-      CursorRegistration current = cursors.get(resultSet);
+      CursorReg current = cursors.get(resultSet);
 
       if( current != null )
           return current;
 
-      CursorRegistration registration = new CursorRegistration(resultSet);
+      CursorReg registration = new CursorReg(resultSet);
 
       cursors.put( resultSet, registration );
 
@@ -62,14 +61,14 @@ public final class JdbcLifecycleManager
     * <p>
     * Stale registration безопасно вернёт false.
     */
-   public synchronized boolean unregisterCursor( CursorRegistration registration )
+   public synchronized boolean unregisterCursor( CursorReg registration )
    {
       if( registration == null )
           return false;
 
       ResultSet resultSet = registration.resultSet;
 
-      CursorRegistration current = cursors.get(resultSet);
+      CursorReg current = cursors.get(resultSet);
 
       if( current != registration )
           return false;
@@ -95,7 +94,7 @@ public final class JdbcLifecycleManager
 
 
    /** */
-   public synchronized boolean isRegistered( CursorRegistration registration )
+   public synchronized boolean isRegistered( CursorReg registration )
    {
       if( registration == null )
          return false;

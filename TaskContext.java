@@ -90,8 +90,9 @@ public class TaskContext implements AutoCloseable {
             try {
 
                 if( c != null && !c.isClosed() ) {
-                    c.close(); }
+                    c.close();
                 }
+            }
 
             catch( SQLException ignored ) {
             }

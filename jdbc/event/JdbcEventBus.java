@@ -9,8 +9,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /** */
 public final class JdbcEventBus
 {
-   /** Слушатели разных типов событий */
-   private final Map< Class<? extends JdbcEvent>, IListenerManConsumer<JdbcEventListener<?>>> listenerMap = new ConcurrentHashMap<>();
+   /** Слушатели разных типов событий, в зависимости от типа - тип, класс события */
+   private final Map< Class<? extends JdbcEvent>, IListenerManConsumer<JdbcEventListener<?>>>
+      listenerMap = new ConcurrentHashMap<>();
 
    /** */
    public synchronized <E extends JdbcEvent> void addListener( Class<E> eventClass, JdbcEventListener<? super E> listener )
@@ -18,14 +19,8 @@ public final class JdbcEventBus
       if( eventClass == null || listener == null )
           return;
 
-      IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.get(eventClass);
-
-      if( man == null )
-      {
-         man = ListenerManFactory.createListenerManConsumer();
-         listenerMap.put(eventClass, man);
-      }
-
+      IListenerManConsumer<JdbcEventListener<?>> man =
+              listenerMap.computeIfAbsent( eventClass, (k)->ListenerManFactory.createListenerManConsumer() );
       man.addListener(listener);
    }
 
@@ -47,13 +42,14 @@ public final class JdbcEventBus
    }
 
 
+   /** */
    public boolean isEmpty()
    {
       return listenerMap.isEmpty();
    }
 
-
-   public void fire( JdbcEvent event )
+   /** */
+   public <E extends JdbcEvent> void fire( E event )
    {
       if( event == null )
           return;
