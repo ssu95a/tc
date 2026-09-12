@@ -7,6 +7,7 @@ import ru.inversion.db.dialect.SqlDialect;
 import ru.inversion.db.dialect.SqlDialectFactory;
 import ru.inversion.db.session.SessionEnvironment;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
+import ru.inversion.tc.jdbc.trace.DefaultJdbcTraceListener;
 import ru.inversion.tc.jdbc.trace.JdbcTracer;
 import ru.inversion.tc.tracer.IQueryDBTracer;
 import ru.inversion.tc.tracer.QueryDBTracer;
@@ -88,6 +89,11 @@ public class TaskContext implements AutoCloseable {
 
             JdbcTracer jdbcTracer =
                     new JdbcTracer(eventBus);
+
+
+            jdbcTracer.addListener(
+                    new DefaultJdbcTraceListener(System.out.)
+            );
 
             Connection jdbcConnection =
                     JdbcConnectionProxy

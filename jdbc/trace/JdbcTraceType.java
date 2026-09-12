@@ -3,9 +3,9 @@ package ru.inversion.tc.jdbc.trace;
 
 /**
  * Тип trace-события.
- *
+ * <p>
  * Не дублирует Jdbc EventType:
- *
+ * <p>
  * EventType описывает событие JDBC core,
  * JdbcTraceType — категорию события tracing layer.
  */

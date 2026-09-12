@@ -2,6 +2,7 @@ package ru.inversion.tc.jdbc.trace;
 
 import ru.inversion.tc.jdbc.event.JdbcEvent;
 
+import java.io.Writer;
 import java.util.Collections;
 import java.util.EventObject;
 import java.util.LinkedHashMap;
@@ -263,5 +264,11 @@ public final class JdbcTraceEvent extends EventObject
          );
 
       return source;
+   }
+
+   /** */
+   public void print( Writer writer )
+   {
+      JdbcTraceEventWriter.write( this, writer );
    }
 }

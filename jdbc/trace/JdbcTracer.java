@@ -25,13 +25,11 @@ import java.util.Map;
  * ошибка JdbcTraceListener не должна влиять
  * на JDBC operation и остальных listeners.
  */
-public final class JdbcTracer
-        implements JdbcEventListener<JdbcEvent>, AutoCloseable
+public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoCloseable
 {
    private final JdbcEventBus eventBus;
 
-   private final IListenerManConsumer<JdbcTraceListener> listeners =
-           ListenerManFactory.createListenerManConsumer();
+   private final IListenerManConsumer<JdbcTraceListener> listeners = ListenerManFactory.createListenerManConsumer();
 
    /*
     * Общий выключатель tracing.
@@ -41,31 +39,23 @@ public final class JdbcTracer
    /*
     * Включённые категории trace.
     */
-   private final EnumSet<JdbcTraceType> enabledTypes =
-           EnumSet.allOf(JdbcTraceType.class);
+   private final EnumSet<JdbcTraceType> enabledTypes = EnumSet.allOf(JdbcTraceType.class);
 
    private boolean closed;
 
 
    /** */
-   public JdbcTracer(
-           JdbcEventBus eventBus
-   )
+   public JdbcTracer( JdbcEventBus eventBus )
    {
       if( eventBus == null )
-         throw new IllegalArgumentException(
-                 "eventBus is null"
-         );
+         throw new IllegalArgumentException( "eventBus is null" );
 
       this.eventBus = eventBus;
 
       /*
        * Одна глобальная подписка на весь JDBC core.
        */
-      eventBus.addListener(
-              JdbcEvent.class,
-              this
-      );
+      eventBus.addListener( JdbcEvent.class, this );
    }
 
 
