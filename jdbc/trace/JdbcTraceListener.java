@@ -11,9 +11,6 @@ package ru.inversion.tc.jdbc.trace;
  * и отправляет JdbcTraceListener-ам.
  */
 @FunctionalInterface
-public interface JdbcTraceListener
-{
-   void onJdbcTrace(
-           JdbcTraceEvent event
-   );
+public interface JdbcTraceListener {
+   void onJdbcTrace( JdbcTraceEvent event );
 }

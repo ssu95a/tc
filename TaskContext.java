@@ -7,7 +7,6 @@ import ru.inversion.db.dialect.SqlDialect;
 import ru.inversion.db.dialect.SqlDialectFactory;
 import ru.inversion.db.session.SessionEnvironment;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
-import ru.inversion.tc.jdbc.trace.DefaultJdbcTraceListener;
 import ru.inversion.tc.jdbc.trace.JdbcTracer;
 import ru.inversion.tc.tracer.IQueryDBTracer;
 import ru.inversion.tc.tracer.QueryDBTracer;
@@ -33,7 +32,9 @@ public class TaskContext implements AutoCloseable {
     
     private Connection          connection;
     private final Long          sessionId;
-    private final QueryDBTracer queryDBTracer;
+    //private final QueryDBTracer queryDBTracer;
+
+    private final JdbcTracer    jdbcTracer;
 
     static final private Logger logger = LoggerFactory.getLogger("ru.inversion.sql");
 
@@ -67,47 +68,30 @@ public class TaskContext implements AutoCloseable {
                     sessionId
             );
             
-            queryDBTracer = new QueryDBTracer( new ParametersByName() {
-                @Override
-                public Object getParameter( String name ) {
-                    switch(name) {
-                        case "sessionInfo":
-                            return sessionInfo;
-                        case "sessionId":
-                            return sessionId;
-                    }
-                    return null;
-                }
-            });
-
-//            Connection jdbcConnection = JdbcConnectionProxy.create( c, null ).proxy();
-//
-//            connection = QueryDBTracerConnection.newInstance( jdbcConnection, queryDBTracer );
-
-            JdbcEventBus eventBus =
-                    new JdbcEventBus();
-
-            JdbcTracer jdbcTracer =
-                    new JdbcTracer(eventBus);
+//            queryDBTracer = new QueryDBTracer( new ParametersByName() {
+//                @Override
+//                public Object getParameter( String name ) {
+//                    switch(name) {
+//                        case "sessionInfo":
+//                            return sessionInfo;
+//                        case "sessionId":
+//                            return sessionId;
+//                    }
+//                    return null;
+//                }
+//            });
 
 
-            jdbcTracer.addListener(
-                    new DefaultJdbcTraceListener(System.out.)
-            );
+            JdbcEventBus eventBus = new JdbcEventBus();
 
-            Connection jdbcConnection =
-                    JdbcConnectionProxy
-                            .create(
-                                    c,
-                                    eventBus
-                            )
-                            .proxy();
+            jdbcTracer = new JdbcTracer(eventBus);
+            connection = JdbcConnectionProxy.create( c, eventBus ).proxy();
 
-            connection =
-                    QueryDBTracerConnection.newInstance(
-                            jdbcConnection,
-                            queryDBTracer
-                    );
+//            connection =
+//                    QueryDBTracerConnection.newInstance(
+//                            jdbcConnection,
+//                            queryDBTracer
+//                    );
 
             TCStorage.INSTANCE().add(this);
 
@@ -127,6 +111,12 @@ public class TaskContext implements AutoCloseable {
             
             throw new RuntimeException( Tags.PRODUCT_LABEL + "Error on create TaskContext", ex );
         }
+    }
+
+    /** */
+    public JdbcTracer getJdbcTracer()
+    {
+        return jdbcTracer;
     }
 
     /** */
@@ -222,7 +212,7 @@ public class TaskContext implements AutoCloseable {
     /**
      * @return  */
     public IQueryDBTracer getQueryDBTracer( ) {
-        return queryDBTracer;
+        return null;
     }
     
     /**

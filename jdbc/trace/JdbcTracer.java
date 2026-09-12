@@ -43,12 +43,11 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
 
    private boolean closed;
 
-
    /** */
    public JdbcTracer( JdbcEventBus eventBus )
    {
       if( eventBus == null )
-         throw new IllegalArgumentException( "eventBus is null" );
+          throw new IllegalArgumentException( "eventBus is null" );
 
       this.eventBus = eventBus;
 
