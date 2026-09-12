@@ -42,8 +42,6 @@ public final class JdbcTraceEventWriter
             writeJdbcEvent(event, writer);
          else
             writeCustomEvent(event, writer);
-
-         writer.flush();
       }
       catch( IOException ex )
       {

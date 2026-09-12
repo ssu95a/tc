@@ -2,15 +2,12 @@ package ru.inversion.tc;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.inversion.dataset.ParametersByName;
 import ru.inversion.db.dialect.SqlDialect;
 import ru.inversion.db.dialect.SqlDialectFactory;
 import ru.inversion.db.session.SessionEnvironment;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.trace.JdbcTracer;
 import ru.inversion.tc.tracer.IQueryDBTracer;
-import ru.inversion.tc.tracer.QueryDBTracer;
-import ru.inversion.tc.tracer.impl.QueryDBTracerConnection;
 import ru.inversion.utils.ConnectionStringFormatEnum;
 import ru.inversion.utils.S;
 import ru.inversion.utils.Tags;
@@ -32,7 +29,6 @@ public class TaskContext implements AutoCloseable {
     
     private Connection          connection;
     private final Long          sessionId;
-    //private final QueryDBTracer queryDBTracer;
 
     private final JdbcTracer    jdbcTracer;
 
@@ -67,31 +63,11 @@ public class TaskContext implements AutoCloseable {
                     c.getMetaData().getURL(),
                     sessionId
             );
-            
-//            queryDBTracer = new QueryDBTracer( new ParametersByName() {
-//                @Override
-//                public Object getParameter( String name ) {
-//                    switch(name) {
-//                        case "sessionInfo":
-//                            return sessionInfo;
-//                        case "sessionId":
-//                            return sessionId;
-//                    }
-//                    return null;
-//                }
-//            });
 
-
-            JdbcEventBus eventBus = new JdbcEventBus();
+            final JdbcEventBus eventBus = new JdbcEventBus();
 
             jdbcTracer = new JdbcTracer(eventBus);
             connection = JdbcConnectionProxy.create( c, eventBus ).proxy();
-
-//            connection =
-//                    QueryDBTracerConnection.newInstance(
-//                            jdbcConnection,
-//                            queryDBTracer
-//                    );
 
             TCStorage.INSTANCE().add(this);
 
@@ -101,9 +77,8 @@ public class TaskContext implements AutoCloseable {
             
             try {
 
-                if( c != null && !c.isClosed() ) {
+                if( c != null && !c.isClosed() )
                     c.close();
-                }
             }
 
             catch( SQLException ignored ) {
@@ -191,11 +166,14 @@ public class TaskContext implements AutoCloseable {
                     if(!connection.getAutoCommit()  )
                         connection.rollback();
                     connection.close();
-                    connection = null;
                 }
             }
         } catch( SQLException ex ) {
             ex.printStackTrace();
+        }
+        finally {
+            connection = null;
+            jdbcTracer.close();
         }
 
         logger.debug( "TaskContext was closed. session ID: " + sessionId);

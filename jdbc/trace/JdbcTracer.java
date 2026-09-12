@@ -55,6 +55,12 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
        * Одна глобальная подписка на весь JDBC core.
        */
       eventBus.addListener( JdbcEvent.class, this );
+
+      /*
+       * Default trace destination.
+       * Аналог legacy QueryDBTracer.
+       */
+      addListener( JdbcTraceLoggerListener.instance() );
    }
 
 
