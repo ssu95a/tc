@@ -360,7 +360,7 @@ public final class JdbcResultSetProxy implements InvocationHandler
          return;
       }
 
-      safeFire( JdbcResultSetEvent.open( proxy, lifecycle.openCursorCount() ) );
+      eventBus.fireSafely( JdbcResultSetEvent.open( proxy, lifecycle.openCursorCount() ) );
    }
 
 
@@ -375,32 +375,7 @@ public final class JdbcResultSetProxy implements InvocationHandler
          return;
       }
 
-      safeFire( JdbcResultSetEvent.close( proxy, lifecycle.openCursorCount() ) );
-   }
-
-
-   /**
-    * Events являются observation-only.
-    * <p>
-    * Ошибка listener-а не должна превращать
-    * успешный JDBC operation в ошибку приложения.
-    */
-   private void safeFire( JdbcEvent event )
-   {
-      try
-      {
-         eventBus.fire(event);
-      }
-      catch( ThreadDeath | VirtualMachineError fatal )
-      {
-         throw fatal;
-      }
-      catch( Throwable ignored )
-      {
-         /*
-          * TODO diagnostics/logging на уровне JdbcEventBus.
-          */
-      }
+      eventBus.fireSafely( JdbcResultSetEvent.close( proxy, lifecycle.openCursorCount() ) );
    }
 
 

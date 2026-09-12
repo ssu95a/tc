@@ -87,6 +87,7 @@ public final class JdbcStatementProxy
     */
    private boolean closed;
 
+   private boolean resultTransition;
 
    /** */
    private JdbcStatementProxy (
@@ -528,66 +529,44 @@ public final class JdbcStatementProxy
     * Statement.getMoreResults()
     * Statement.getMoreResults(int)
     */
-   private Object getMoreResults(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object getMoreResults( Method method, Object[] args ) throws Throwable
    {
-      Object value;
+      resultTransition = true;
 
       try
       {
-         value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
-      }
-      catch( Throwable throwable )
-      {
-         /*
-          * Даже failed transition мог изменить
-          * состояние предыдущих ResultSet.
-          */
+         Object value = invokeRaw( method, args );
+
+         JdbcResultSetProxy newCursor = null;
+
+         if( Boolean.TRUE.equals(value) )
+         {
+            ResultSet current = statement.getResultSet();
+            newCursor = registerCursorResultSet( current );
+         }
+
          reconcileCursorResultSets();
 
          syncClosedState();
 
-         throw throwable;
+         if( newCursor != null )
+             newCursor.fireOpen();
+
+         /*
+          * false + updateCount == -1
+          * означает конец result chain.
+          */
+         if( !Boolean.TRUE.equals(value) && statement.getUpdateCount() == -1 )
+         {
+            resultTransition = false;
+            connection.cursorStateChanged();
+         }
+
+         return value;
       }
-
-      JdbcResultSetProxy newCursor = null;
-
-      /*
-       * При наличии нового ResultSet сначала
-       * регистрируем его.
-       *
-       * Это также корректно работает с
-       * KEEP_CURRENT_RESULT:
-       *
-       * предыдущий ResultSet остаётся raw isClosed()==false
-       * и reconcile его не снимет.
-       */
-      if( Boolean.TRUE.equals(value) )
-      {
-         ResultSet current =
-                 statement.getResultSet();
-
-         newCursor =
-                 registerCursorResultSet(
-                         current
-                 );
+      finally {
+         resultTransition = false;
       }
-
-      reconcileCursorResultSets();
-
-      syncClosedState();
-
-      if( newCursor != null )
-         newCursor.fireOpen();
-
-      return value;
    }
 
 
@@ -1090,7 +1069,7 @@ public final class JdbcStatementProxy
       if( !hasStatementListeners() )
          return;
 
-      safeFire( JdbcStatementEvent.open( proxy, sql ) );
+      eventBus.fireSafely( JdbcStatementEvent.open( proxy, sql ) );
    }
 
 
@@ -1100,7 +1079,7 @@ public final class JdbcStatementProxy
       if( !hasStatementListeners() )
          return;
 
-      safeFire( JdbcStatementEvent.beforeExecute( proxy, methodName, sql, inParameters ));
+      eventBus.fireSafely( JdbcStatementEvent.beforeExecute( proxy, methodName, sql, inParameters ));
    }
 
 
@@ -1112,7 +1091,7 @@ public final class JdbcStatementProxy
 
       Map<Integer, Object> out = outParameterValues();
 
-      safeFire( JdbcStatementEvent.afterExecute( proxy, methodName, sql, inParameters, out, durationNanos ) );
+      eventBus.fireSafely( JdbcStatementEvent.afterExecute( proxy, methodName, sql, inParameters, out, durationNanos ) );
    }
 
 
@@ -1126,7 +1105,7 @@ public final class JdbcStatementProxy
    {
       if( !hasStatementListeners() )
          return;
-      safeFire( JdbcStatementEvent.executeError( proxy, methodName, sql, inParameters, durationNanos, throwable ) );
+      eventBus.fireSafely( JdbcStatementEvent.executeError( proxy, methodName, sql, inParameters, durationNanos, throwable ) );
    }
 
 
@@ -1136,31 +1115,7 @@ public final class JdbcStatementProxy
       if( !hasStatementListeners() )
           return;
 
-      safeFire( JdbcStatementEvent.close( proxy, sql ) );
-   }
-
-
-   /**
-    * Event listeners являются observation-only.
-    *
-    * RuntimeException listener-а не должна
-    * изменять результат JDBC operation.
-    *
-    * Error намеренно не перехватываем.
-    */
-   private void safeFire( JdbcEvent event )
-   {
-      try
-      {
-         eventBus.fire(event);
-      }
-      catch( RuntimeException ignored )
-      {
-         /*
-          * TODO logging/diagnostics
-          * лучше централизовать в JdbcEventBus.
-          */
-      }
+      eventBus.fireSafely( JdbcStatementEvent.close( proxy, sql ) );
    }
 
 
@@ -1196,7 +1151,7 @@ public final class JdbcStatementProxy
        * transaction trigger выполнит statementClosed()
        * после RESULT_SET_CLOSE / STATEMENT_CLOSE.
        */
-      if( closing )
+      if( closing || resultTransition  )
           return;
 
       connection.cursorStateChanged();

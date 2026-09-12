@@ -977,46 +977,15 @@ public final class JdbcConnectionProxy implements InvocationHandler
        * JdbcEvent instance получают только
        * listeners на JdbcEvent.class.
        */
-      if( !eventBus.hasListeners(
-              JdbcEvent.class
-      ) )
+      if( !eventBus.hasListeners( JdbcEvent.class) )
       {
          return;
       }
 
-      safeFire(
-              new JdbcEvent(
-                      proxy,
-                      type,
-                      phase,
-                      throwable
-              )
-      );
+      eventBus.fireSafely( new JdbcEvent( proxy, type, phase, throwable ) );
    }
 
 
-   /**
-    * Event observation не влияет
-    * на JDBC correctness.
-    *
-    * Error не перехватываем.
-    */
-   private void safeFire(
-           JdbcEvent event
-   )
-   {
-      try
-      {
-         eventBus.fire(event);
-      }
-      catch( RuntimeException ignored )
-      {
-         /*
-          * TODO logging/diagnostics
-          * лучше централизовать в JdbcEventBus.
-          */
-      }
-   }
 
    void cursorStateChanged()
    {

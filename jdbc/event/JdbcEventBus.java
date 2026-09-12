@@ -82,9 +82,77 @@ public final class JdbcEventBus
       man.fire( listener -> ((JdbcEventListener) listener).onJdbcEvent(event));
    }
 
+
    /** */
    public boolean hasListeners( Class<? extends JdbcEvent> eventClass )
    {
       return listenerMap.containsKey(eventClass) || listenerMap.containsKey(JdbcEvent.class);
+   }
+
+
+   /** */
+   public <E extends JdbcEvent> void fireSafely( E event )
+   {
+      if( event == null )
+          return;
+
+      fireForClassSafely( event, event.getClass() );
+
+      if( event.getClass() != JdbcEvent.class )
+          fireForClassSafely( event, JdbcEvent.class );
+   }
+
+
+   /** */
+   private void fireForClassSafely( JdbcEvent event, Class<? extends JdbcEvent> eventClass )
+   {
+      IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.get(eventClass);
+
+      if( man == null )
+          return;
+
+      try
+      {
+         man.fire( listener -> fireListenerSafely( listener, event ) );
+      }
+      catch( ThreadDeath | VirtualMachineError fatal )
+      {
+         throw fatal;
+      }
+      catch( Throwable ignored )
+      {
+         /*
+          * Ошибка самого listener manager.
+          *
+          * TODO diagnostics/logging.
+          */
+      }
+   }
+
+
+   @SuppressWarnings({ "rawtypes", "unchecked" })
+   private static void fireListenerSafely( JdbcEventListener<?> listener, JdbcEvent event )
+   {
+      try
+      {
+         ((JdbcEventListener) listener).onJdbcEvent(event);
+      }
+      catch( ThreadDeath | VirtualMachineError fatal )
+      {
+         throw fatal;
+      }
+      catch( Throwable ignored )
+      {
+         /*
+          * Observation-only.
+          *
+          * Один broken listener не мешает:
+          * - JDBC operation
+          * - остальным listeners
+          * - global JdbcEvent listener
+          *
+          * TODO diagnostics/logging.
+          */
+      }
    }
 }

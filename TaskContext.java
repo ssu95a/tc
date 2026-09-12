@@ -6,6 +6,8 @@ import ru.inversion.dataset.ParametersByName;
 import ru.inversion.db.dialect.SqlDialect;
 import ru.inversion.db.dialect.SqlDialectFactory;
 import ru.inversion.db.session.SessionEnvironment;
+import ru.inversion.tc.jdbc.event.JdbcEventBus;
+import ru.inversion.tc.jdbc.trace.JdbcTracer;
 import ru.inversion.tc.tracer.IQueryDBTracer;
 import ru.inversion.tc.tracer.QueryDBTracer;
 import ru.inversion.tc.tracer.impl.QueryDBTracerConnection;
@@ -77,9 +79,29 @@ public class TaskContext implements AutoCloseable {
                 }
             });
 
-            Connection jdbcConnection = JdbcConnectionProxy.create( c, null ).proxy();
+//            Connection jdbcConnection = JdbcConnectionProxy.create( c, null ).proxy();
+//
+//            connection = QueryDBTracerConnection.newInstance( jdbcConnection, queryDBTracer );
 
-            connection = QueryDBTracerConnection.newInstance( jdbcConnection, queryDBTracer );
+            JdbcEventBus eventBus =
+                    new JdbcEventBus();
+
+            JdbcTracer jdbcTracer =
+                    new JdbcTracer(eventBus);
+
+            Connection jdbcConnection =
+                    JdbcConnectionProxy
+                            .create(
+                                    c,
+                                    eventBus
+                            )
+                            .proxy();
+
+            connection =
+                    QueryDBTracerConnection.newInstance(
+                            jdbcConnection,
+                            queryDBTracer
+                    );
 
             TCStorage.INSTANCE().add(this);
 
