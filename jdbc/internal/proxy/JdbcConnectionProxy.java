@@ -37,26 +37,23 @@ import java.util.*;
  * Все Statement, созданные через Connection,
  * обязательно проходят через JdbcStatementProxy.
  */
-public final class JdbcConnectionProxy implements InvocationHandler
+public final class JdbcConnectionProxy extends JdbcObjectProxy
 {
-   /** real connection*/
+   /** real JDBC connection*/
    private final Connection connection;
 
-   /** */
-   private final JdbcLifecycleManager lifecycle = new JdbcLifecycleManager();
 
-   /** Доставщик сообщений */
-   private final JdbcEventBus eventBus;
+   //JdbcSavepointManager
 
    /*
-    * Только Statement, созданные данным Connection, Identity semantics strong!!
+    * Только Statement, созданные данным Connection!
     */
    private final Map<Statement, JdbcStatementProxy> statements = new IdentityHashMap<>();
 
    private Connection proxy;
 
    /*
-    * Lifecycle state нашего proxy.
+    * состояния
     */
    private volatile boolean closed;
 
@@ -70,17 +67,18 @@ public final class JdbcConnectionProxy implements InvocationHandler
    /** */
    private JdbcConnectionProxy( Connection connection, JdbcEventBus eventBus )
    {
+      super( new JdbcLifecycleManager(), eventBus );
+
       if( connection == null )
           throw new IllegalArgumentException( "connection is null" );
 
       this.connection = connection;
-      this.eventBus   = eventBus;
 
       /* Что умеет подключаемая СУБД */
       JdbcDatabaseSupport support = JdbcDatabaseSupportFactory.create( connection );
 
       transactionManager = new JdbcTransactionManager(
-        connection,     // RAW
+        connection,     // JDBC
         lifecycle,      // цикл
         support.transactionPolicy() // политика работы с транзакцией
       );
@@ -273,47 +271,26 @@ public final class JdbcConnectionProxy implements InvocationHandler
        *
        * Vendor-specific unwrap разрешаем driver-у.
        */
-      if( "unwrap".equals(methodName)
-              && args != null
-              && args.length == 1 )
+      if( "unwrap".equals(methodName) && args != null && args.length == 1 )
       {
-         Class<?> clazz =
-                 (Class<?>) args[0];
+         Class<?> clazz = (Class<?>) args[0];
 
          if( clazz.isInstance(proxy) )
             return clazz.cast(proxy);
       }
 
-      if( "isWrapperFor".equals(methodName)
-              && args != null
-              && args.length == 1 )
+      if( "isWrapperFor".equals(methodName) && args != null && args.length == 1 )
       {
-         Class<?> clazz =
-                 (Class<?>) args[0];
+         Class<?> clazz = (Class<?>) args[0];
 
          if( clazz.isInstance(proxy) )
             return true;
       }
 
       /*
-       * Остальной Connection API:
-       *
-       * getMetaData()
-       * nativeSQL()
-       * createArrayOf()
-       * createBlob()
-       * createClob()
-       * setTransactionIsolation()
-       * setReadOnly()
-       * setSchema()
-       * network timeout
-       * clientInfo
-       * ...
+       * Остальное Connection API:
        */
-      return invokeRaw(
-              method,
-              args
-      );
+      return invokeRaw( method, args );
    }
 
 
@@ -335,32 +312,26 @@ public final class JdbcConnectionProxy implements InvocationHandler
     * То есть listener STATEMENT_OPEN уже видит
     * полностью зарегистрированный Statement.
     */
-   private Statement wrapStatement(
-           Statement statement,
-           String sql
-   )
-           throws Throwable
+   private Statement wrapStatement( Statement statement, String sql ) throws Throwable
    {
       if( statement == null )
-         return null;
-
+          return null;
       /*
-       * Теоретическая защита от driver-а,
-       * возвращающего тот же Statement object.
+       * Теоретическая защита если вдруг JDBC driver вернет тот же Statement object.
        */
-      JdbcStatementProxy current =
-              registeredStatement(
-                      statement
-              );
+      synchronized (this) {
 
-      if( current != null )
-         return current.proxy();
+         JdbcStatementProxy current = statements.get(statement);
+
+         if( current != null )
+             return current.proxy();
+      }
 
       JdbcStatementProxy handler = null;
 
       try
       {
-         handler = JdbcStatementProxy.create( statement, this, sql, lifecycle, eventBus);
+         handler = JdbcStatementProxy.create( statement, this, sql, lifecycle, eventBus );
 
          registerStatement( statement, handler );
 
@@ -391,8 +362,7 @@ public final class JdbcConnectionProxy implements InvocationHandler
 
 
    /**
-    * Statement handler зарегистрирован
-    * в данном Connection.
+    * Statement handler зарегистрирован в данном Connection.
     */
    private synchronized void registerStatement( Statement statement, JdbcStatementProxy handler ) throws SQLException
    {
@@ -411,7 +381,7 @@ public final class JdbcConnectionProxy implements InvocationHandler
    /**
     * Получить handler по raw Statement identity.
     */
-   private synchronized JdbcStatementProxy registeredStatement( Statement statement)
+   private synchronized JdbcStatementProxy getStatement(Statement statement)
    {
       return statements.get( statement );
    }
@@ -661,41 +631,30 @@ public final class JdbcConnectionProxy implements InvocationHandler
    /**
     * Connection.releaseSavepoint(...).
     */
-   private Object releaseSavepoint(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object releaseSavepoint( Method method, Object[] args ) throws Throwable
    {
-      Savepoint savepoint =
-              (Savepoint) args[0];
+      Savepoint savepoint = (Savepoint) args[0];
 
       try
       {
-         Object value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
+         Object value = invokeRaw( method, args );
 
-         lifecycle.savepointReleased(
-                 savepoint
-         );
+         lifecycle.savepointReleased( savepoint );
 
-         fire(
-                 EventType.SAVEPOINT_RELEASE,
-                 EventPhase.AFTER,
-                 null
+         fire (
+            EventType.SAVEPOINT_RELEASE,
+            EventPhase.AFTER,
+            null
          );
 
          return value;
       }
       catch( Throwable throwable )
       {
-         fire(
-                 EventType.SAVEPOINT_RELEASE,
-                 EventPhase.ERROR,
-                 throwable
+         fire (
+           EventType.SAVEPOINT_RELEASE,
+           EventPhase.ERROR,
+           throwable
          );
 
          throw throwable;
@@ -705,8 +664,7 @@ public final class JdbcConnectionProxy implements InvocationHandler
    /**
     * Явный Connection.close().
     */
-   private void close()
-           throws Throwable
+   private void close() throws Throwable
    {
       if( closed )
          return;
@@ -785,10 +743,7 @@ public final class JdbcConnectionProxy implements InvocationHandler
 
          closed = true;
 
-         snapshot =
-                 new ArrayList<>(
-                         statements.values()
-                 );
+         snapshot = new ArrayList<>( statements.values() );
 
          /*
           * Сначала owner registry.
@@ -826,26 +781,22 @@ public final class JdbcConnectionProxy implements InvocationHandler
    /**
     * Connection.isClosed().
     */
-   private boolean isClosed()
-           throws SQLException
+   private boolean isClosed() throws SQLException
    {
       if( closed )
          return true;
 
-      boolean rawClosed =
-              connection.isClosed();
+      boolean rawClosed = connection.isClosed();
 
       if( rawClosed )
-         connectionClosed();
+          connectionClosed();
 
       return rawClosed;
    }
 
 
    /**
-    * Синхронизировать все принадлежащие
-    * Connection Statement после transaction boundary
-    * или другой Connection operation.
+    * Синхронизировать все принадлежащие Connection Statement после транзакционной или другой Connection operation.
     */
    private void syncStatements()
    {
@@ -925,24 +876,8 @@ public final class JdbcConnectionProxy implements InvocationHandler
    }
 
 
-   /** InvocationHandler mechanics */
-   private Object invokeObjectMethod( Object proxy, String methodName, Object[] args )
-   {
-      if( "equals".equals(methodName) )
-          return proxy == args[0];
-
-      if( "hashCode".equals(methodName) )
-          return System.identityHashCode(proxy);
-
-      if( "toString".equals(methodName) )
-          return "JdbcConnectionProxy@" + Integer.toHexString( System.identityHashCode(proxy) );
-
-      throw new IllegalStateException( "Unsupported Object method: " + methodName );
-   }
-
-
    /**
-    * CONNECTION_OPEN.
+    * Event: CONNECTION_OPEN.
     */
    private void fireConnectionOpen()
    {
@@ -951,7 +886,7 @@ public final class JdbcConnectionProxy implements InvocationHandler
 
 
    /**
-    * CONNECTION_CLOSE.
+    * Event: CONNECTION_CLOSE.
     */
    private void fireConnectionClose()
    {
@@ -986,7 +921,7 @@ public final class JdbcConnectionProxy implements InvocationHandler
    }
 
 
-
+   /** */
    void cursorStateChanged()
    {
       if( closed )
@@ -996,7 +931,7 @@ public final class JdbcConnectionProxy implements InvocationHandler
          return;
 
       if( lifecycle.hasOpenCursors() )
-         return;
+          return;
 
       try
       {
@@ -1005,9 +940,9 @@ public final class JdbcConnectionProxy implements InvocationHandler
          if( committed )
          {
             fire(
-                    EventType.TRANSACTION_COMMIT,
-                    EventPhase.AFTER,
-                    null
+              EventType.TRANSACTION_COMMIT,
+              EventPhase.AFTER,
+              null
             );
          }
       }

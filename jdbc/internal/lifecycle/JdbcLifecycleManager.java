@@ -7,9 +7,10 @@ import java.util.Map;
 
 
 /**
- * Mandatory JDBC lifecycle state for one Connection.
- *
- * Tracks only Statement-owned cursor ResultSet.
+ * Жизненный цикл одного соединения
+ * <p>
+ * Цель:
+ *    отслеживание resultSet-курсоров, открытие, закрытие!
  */
 public final class JdbcLifecycleManager
 {

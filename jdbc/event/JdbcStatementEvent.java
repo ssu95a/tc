@@ -4,7 +4,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.TreeMap;
 
-/** */
+/** Событие для Statement */
 public final class JdbcStatementEvent extends JdbcEvent
 {
    private final String methodName;
@@ -17,27 +17,27 @@ public final class JdbcStatementEvent extends JdbcEvent
 
    /** */
    private JdbcStatementEvent(
-           Object source,
+      Object source,
 
-           EventType type,
-           EventPhase phase,
+      EventType type,
+      EventPhase phase,
 
-           String methodName,
-           String sql,
+      String methodName,
+      String sql,
 
-           Map<Integer, Object> inParameters,
-           Map<Integer, Object> outParameters,
+      Map<Integer, Object> inParameters,
+      Map<Integer, Object> outParameters,
 
-           long durationNanos,
+      long durationNanos,
 
-           Throwable throwable
+      Throwable throwable
    )
    {
       super( source, type, phase, throwable );
 
       this.methodName    = methodName;
       this.sql           = sql;
-      this.inParameters  = snapshot(inParameters);
+      this.inParameters  = snapshot(inParameters );
       this.outParameters = snapshot(outParameters);
       this.durationNanos = durationNanos;
    }

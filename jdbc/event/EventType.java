@@ -1,5 +1,6 @@
 package ru.inversion.tc.jdbc.event;
 
+/** Поддерживаемые типы событий */
 public enum EventType {
 
    CONNECTION_OPEN,

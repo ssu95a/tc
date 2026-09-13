@@ -14,15 +14,15 @@ import java.sql.SQLException;
 
 
 /**
- * Proxy только для Statement-owned cursor ResultSet.
+ * <h5>Proxy только для Statement cursor ResultSet.</h5>
  * <p>
- * Не предназначен для:
+ * Не учитываются:
  * - Statement.getGeneratedKeys()
  * - Array.getResultSet()
  * - DatabaseMetaData ResultSet
  * - прочих служебных JDBC ResultSet
  */
-public final class JdbcResultSetProxy implements InvocationHandler
+public final class JdbcResultSetProxy extends JdbcObjectProxy
 {
    private final ResultSet resultSet;
 
@@ -35,9 +35,6 @@ public final class JdbcResultSetProxy implements InvocationHandler
     * - для closeOnCompletion synchronization
     */
    private final JdbcStatementProxy statement;
-
-   private final JdbcLifecycleManager lifecycle;
-   private final JdbcEventBus eventBus;
 
    private ResultSet proxy;
 
@@ -66,19 +63,16 @@ public final class JdbcResultSetProxy implements InvocationHandler
    /** */
    private JdbcResultSetProxy( ResultSet resultSet, JdbcStatementProxy statement, JdbcLifecycleManager lifecycle, JdbcEventBus eventBus )
    {
+      super(lifecycle, eventBus);
+
       if( resultSet == null )
           throw new IllegalArgumentException( "resultSet is null" );
 
       if( statement == null )
           throw new IllegalArgumentException("statement is null" );
 
-      if( lifecycle == null )
-          throw new IllegalArgumentException( "lifecycle is null" );
-
       this.resultSet = resultSet;
       this.statement = statement;
-      this.lifecycle = lifecycle;
-      this.eventBus  = eventBus;
 
       registration   = lifecycle.registerCursor(resultSet);
    }
@@ -86,7 +80,7 @@ public final class JdbcResultSetProxy implements InvocationHandler
 
    /**
     * Создаёт handler и JDBC proxy.
-    *
+    * <p>
     * OPEN event здесь специально НЕ отправляется.
     * Его вызывает owner StatementProxy после того,
     * как завершена необходимая lifecycle-синхронизация.
@@ -266,21 +260,20 @@ public final class JdbcResultSetProxy implements InvocationHandler
           statement.cursorStateChanged();
    }
 
+
    /**
     * isClosed() синхронизирует lifecycle, если driver
     * уже закрыл ResultSet не через наш proxy.
     */
-   private synchronized boolean isClosed()
-           throws SQLException
+   private synchronized boolean isClosed() throws SQLException
    {
       if( closed )
-         return true;
+          return true;
 
-      boolean rawClosed =
-              resultSet.isClosed();
+      boolean rawClosed = resultSet.isClosed();
 
       if( rawClosed )
-         lifecycleClosed();
+          lifecycleClosed();
 
       return rawClosed;
    }
@@ -289,8 +282,7 @@ public final class JdbcResultSetProxy implements InvocationHandler
    /** */
    private boolean isRawClosed()
    {
-      try
-      {
+      try {
          return resultSet.isClosed();
       }
       catch( SQLException ignored )
@@ -304,41 +296,17 @@ public final class JdbcResultSetProxy implements InvocationHandler
 
 
    /** */
-   private Object invokeRaw(
-           Method method,
-           Object[] args
-   )
+   private Object invokeRaw( Method method, Object[] args )
            throws Throwable
    {
       try
       {
-         return method.invoke(
-                 resultSet,
-                 args
-         );
+         return method.invoke( resultSet, args );
       }
       catch( InvocationTargetException ex )
       {
          throw ex.getCause();
       }
-   }
-
-
-   /** */
-   private Object invokeObjectMethod( Object proxy, String methodName, Object[] args )
-   {
-      if( "equals".equals(methodName) )
-          return proxy == args[0];
-
-      if( "hashCode".equals(methodName) )
-           return System.identityHashCode(proxy);
-
-      if( "toString".equals(methodName) )
-      {
-         return "JdbcResultSetProxy[" + "]";
-      }
-
-      throw new IllegalStateException( "Unsupported Object method: " + methodName );
    }
 
 
@@ -380,16 +348,11 @@ public final class JdbcResultSetProxy implements InvocationHandler
 
 
    /** */
-   private static Throwable unwrapThrowable(
-           Throwable throwable
-   )
+   private static Throwable unwrapThrowable( Throwable throwable )
    {
       if( throwable instanceof InvocationTargetException )
       {
-         Throwable cause =
-                 ((InvocationTargetException) throwable)
-                         .getCause();
-
+         Throwable cause = throwable.getCause();
          if( cause != null )
             return cause;
       }

@@ -1,11 +1,10 @@
 package ru.inversion.tc.jdbc.event;
 
 
-/** */
+/** Событие связанное с ResultSet-Курсором */
 public final class JdbcResultSetEvent extends JdbcEvent
 {
    private final int openResultSetCount;
-
 
    /** */
    private JdbcResultSetEvent( Object source, EventType type, int openResultSetCount )
@@ -19,21 +18,21 @@ public final class JdbcResultSetEvent extends JdbcEvent
    }
 
 
-   /** */
+   /** Кол-во открытых курсоров в данный момент, в рамках connection */
    public int openResultSetCount()
    {
       return openResultSetCount;
    }
 
 
-   /** */
+   /** Создание события открытия курсора */
    public static JdbcResultSetEvent open( Object source, int openResultSetCount )
    {
       return new JdbcResultSetEvent( source, EventType.RESULT_SET_OPEN, openResultSetCount );
    }
 
 
-   /** */
+   /** Создание события закрытия курсора */
    public static JdbcResultSetEvent close( Object source, int openResultSetCount )
    {
       return new JdbcResultSetEvent( source, EventType.RESULT_SET_CLOSE, openResultSetCount );

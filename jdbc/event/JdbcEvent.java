@@ -13,36 +13,22 @@ public class JdbcEvent extends EventObject
    private final Throwable throwable;
 
    /** */
-   public JdbcEvent(
-           Object source,
-           EventType type,
-           EventPhase phase
-   )
+   public JdbcEvent( Object source, EventType type, EventPhase phase )
    {
-      this(
-              source,
-              type,
-              phase,
-              null
-      );
+      this( source, type, phase, null );
    }
 
 
    /** */
-   public JdbcEvent(
-           Object source,
-           EventType type,
-           EventPhase phase,
-           Throwable throwable
-   )
+   public JdbcEvent( Object source, EventType type, EventPhase phase, Throwable throwable )
    {
       super(source);
 
       if( type == null )
-         throw new IllegalArgumentException("type is null");
+          throw new IllegalArgumentException("type is null");
 
       if( phase == null )
-         throw new IllegalArgumentException("phase is null");
+          throw new IllegalArgumentException("phase is null");
 
       this.type      = type;
       this.phase     = phase;

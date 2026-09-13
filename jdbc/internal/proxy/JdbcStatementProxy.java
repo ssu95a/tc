@@ -1,11 +1,9 @@
 package ru.inversion.tc.jdbc.internal.proxy;
 
-import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.event.JdbcStatementEvent;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -26,32 +24,22 @@ import java.util.TreeSet;
 
 
 /**
- * JDBC Statement / PreparedStatement / CallableStatement proxy.
- *
- * Tracks only Statement-owned cursor ResultSet.
- *
- * Arbitrary JDBC ResultSet such as generated keys are not
- * registered in JdbcLifecycleManager.
+ * <h5>JDBC Statement / PreparedStatement / CallableStatement proxy.</h5>
+ * <p>
+ * Отслеживаем только связанные со Statement-owned cursor ResultSet.
  */
-public final class JdbcStatementProxy
-        implements InvocationHandler
+public final class JdbcStatementProxy extends JdbcObjectProxy
 {
    private final Statement statement;
 
    /*
-    * Именно proxy Connection.
-    *
-    * Statement.getConnection() никогда
-    * не должен возвращать raw Connection.
+    * Proxy Connection, реальный никогда не возвращаем.
     */
    private final JdbcConnectionProxy  connection;
 
-   private final JdbcLifecycleManager lifecycle;
-   private final JdbcEventBus eventBus;
 
-   /*
+   /* Исходный SQL текст:
     * Для PreparedStatement / CallableStatement.
-    *
     * Для обычного Statement == null.
     */
    private final String sql;
@@ -60,6 +48,7 @@ public final class JdbcStatementProxy
    private final boolean callable;
 
    private boolean closing;
+
    /*
     * Последние успешно установленные
     * positional IN parameters.
@@ -73,8 +62,6 @@ public final class JdbcStatementProxy
 
    /*
     * Только Statement-owned cursor ResultSet.
-    *
-    * Generated keys сюда НЕ входят.
     *
     * Identity semantics обязательны.
     */
@@ -98,17 +85,15 @@ public final class JdbcStatementProxy
       JdbcEventBus eventBus
    )
    {
+      super( lifecycle, eventBus );
+
       if( statement == null )
          throw new IllegalArgumentException( "statement is null" );
       if( connection == null )
          throw new IllegalArgumentException( "connection is null" );
-      if( lifecycle == null )
-         throw new IllegalArgumentException( "lifecycle is null" );
 
       this.statement = statement;
       this.connection= connection;
-      this.lifecycle = lifecycle;
-      this.eventBus  = eventBus;
       this.sql       = sql;
 
       prepared = statement instanceof PreparedStatement;
@@ -136,18 +121,15 @@ public final class JdbcStatementProxy
       else
          jdbcInterface = Statement.class;
 
-      handler.proxy =
-              (Statement) Proxy.newProxyInstance(
-                      JdbcStatementProxy.class.getClassLoader(),
+      handler.proxy = (Statement) Proxy.newProxyInstance(
+              JdbcStatementProxy.class.getClassLoader(),
                       new Class<?>[] { jdbcInterface },
                       handler
               );
 
       /*
        * fireOpen() здесь НЕ вызываем.
-       *
-       * Сначала ConnectionProxy должен
-       * зарегистрировать owner.
+       * Сначала ConnectionProxy должен зарегистрировать Statement у себя.
        */
       return handler;
    }
@@ -176,29 +158,17 @@ public final class JdbcStatementProxy
 
 
    @Override
-   public Object invoke(
-           Object proxy,
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   public Object invoke( Object proxy, Method method, Object[] args ) throws Throwable
    {
-      String methodName =
-              method.getName();
+      String methodName = method.getName();
 
       /*
        * Object identity proxy-а не зависит
        * от equals/hashCode JDBC driver-а.
        */
-      if( Object.class.equals(
-              method.getDeclaringClass()
-      ) )
+      if( Object.class.equals( method.getDeclaringClass() ) )
       {
-         return invokeObjectMethod(
-                 proxy,
-                 methodName,
-                 args
-         );
+         return invokeObjectMethod( proxy, methodName, args );
       }
 
       /*
@@ -792,15 +762,12 @@ public final class JdbcStatementProxy
     *
     * Синхронизируем все tracked ResultSet.
     */
-   private void closeCursorResultSetsByStatement()
+   private void closeResultSets()
    {
       if( cursorResultSets.isEmpty() )
-         return;
+          return;
 
-      ArrayList<JdbcResultSetProxy> snapshot =
-              new ArrayList<>(
-                      cursorResultSets.values()
-              );
+      ArrayList<JdbcResultSetProxy> snapshot = new ArrayList<>( cursorResultSets.values() );
 
       /*
        * Сначала очищаем owner cache.
@@ -868,14 +835,13 @@ public final class JdbcStatementProxy
 
       try
       {
-         closeCursorResultSetsByStatement();
+         closeResultSets();
 
          connection.statementClosed(this);
 
          fireClose();
       }
-      finally
-      {
+      finally {
          closing = false;
       }
 
@@ -895,14 +861,12 @@ public final class JdbcStatementProxy
    /**
     * Statement.isClosed().
     */
-   private boolean isClosed()
-           throws SQLException
+   private boolean isClosed() throws SQLException
    {
       if( closed )
-         return true;
+          return true;
 
-      boolean rawClosed =
-              statement.isClosed();
+      boolean rawClosed = statement.isClosed();
 
       if( rawClosed )
          statementClosed();
@@ -944,8 +908,7 @@ public final class JdbcStatementProxy
       catch( SQLException ignored )
       {
          /*
-          * Консервативно считаем Statement
-          * ещё открытым.
+          * Если определить состояние нельзя, считаем statement открытым.
           */
          return false;
       }
@@ -962,8 +925,7 @@ public final class JdbcStatementProxy
       catch( SQLException ignored )
       {
          /*
-          * Если определить состояние нельзя,
-          * считаем cursor открытым.
+          * Если определить состояние нельзя, считаем cursor открытым.
           */
          return false;
       }
@@ -1034,27 +996,6 @@ public final class JdbcStatementProxy
          throw ex.getCause();
       }
    }
-
-
-   /** */
-   private Object invokeObjectMethod (
-        Object proxy,
-        String methodName,
-        Object[] args
-   )
-   {
-      if( "equals".equals(methodName) )
-         return proxy == args[0];
-
-      if( "hashCode".equals(methodName) )
-         return System.identityHashCode(proxy);
-
-      if( "toString".equals(methodName) )
-          return "JdbcStatementProxy@" + Integer.toHexString( System.identityHashCode(proxy) );
-
-      throw new IllegalStateException( "Unsupported Object method: " + methodName );
-   }
-
 
    /** */
    private boolean hasStatementListeners()

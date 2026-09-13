@@ -21,6 +21,7 @@ public final class JdbcEventBus
 
       IListenerManConsumer<JdbcEventListener<?>> man =
               listenerMap.computeIfAbsent( eventClass, (k)->ListenerManFactory.createListenerManConsumer() );
+
       man.addListener(listener);
    }
 
@@ -28,7 +29,7 @@ public final class JdbcEventBus
    public synchronized <E extends JdbcEvent> void removeListener( Class<E> eventClass, JdbcEventListener<? super E> listener )
    {
       if( eventClass == null || listener == null )
-         return;
+          return;
 
       IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.get(eventClass);
 
@@ -57,7 +58,7 @@ public final class JdbcEventBus
       fireForClass( event, event.getClass());
 
       /*
-       * Listener на JdbcEvent.class получает все события.
+       * Событие JdbcEvent.class получает все слушатели.
        */
       if( event.getClass() != JdbcEvent.class )
           fireForClass( event, JdbcEvent.class);
@@ -69,7 +70,7 @@ public final class JdbcEventBus
    {
       IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.get(eventClass);
       if( man == null )
-         return;
+          return;
 
       fire(man, event);
    }
@@ -103,7 +104,10 @@ public final class JdbcEventBus
    }
 
 
-   /** */
+   /**
+    * Падение одного слушателя не останавливает обработку события.
+    * Кроме совсем уж плохих ситуаций!
+    */
    private void fireForClassSafely( JdbcEvent event, Class<? extends JdbcEvent> eventClass )
    {
       IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.get(eventClass);
@@ -124,14 +128,14 @@ public final class JdbcEventBus
          /*
           * Ошибка самого listener manager.
           *
-          * TODO diagnostics/logging.
+          * TODO logging.
           */
       }
    }
 
 
    @SuppressWarnings({ "rawtypes", "unchecked" })
-   private static void fireListenerSafely( JdbcEventListener<?> listener, JdbcEvent event )
+   private static <E extends JdbcEvent> void fireListenerSafely( JdbcEventListener<?> listener, E event )
    {
       try
       {
