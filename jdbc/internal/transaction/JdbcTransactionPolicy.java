@@ -7,6 +7,6 @@ import java.sql.SQLException;
 /** */
 public interface JdbcTransactionPolicy
 {
-   /** Можем ли завершить транзакцию */
+   /** Допустим ли автоматический COMMIT idle-транзакции. */
    boolean canCommitIdleTransaction(Connection connection ) throws SQLException;
 }

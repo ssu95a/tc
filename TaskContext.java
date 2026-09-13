@@ -6,6 +6,7 @@ import ru.inversion.db.dialect.SqlDialect;
 import ru.inversion.db.dialect.SqlDialectFactory;
 import ru.inversion.db.session.SessionEnvironment;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
+import ru.inversion.tc.jdbc.trace.JdbcTraceType;
 import ru.inversion.tc.jdbc.trace.JdbcTracer;
 import ru.inversion.tc.tracer.IQueryDBTracer;
 import ru.inversion.utils.ConnectionStringFormatEnum;
@@ -57,20 +58,13 @@ public class TaskContext implements AutoCloseable {
             c = createConnection( login, password, url );
 
             sessionId = initSessionID( c );
-            
-            final String sessionInfo = String.format (
-                    "DB connection \n\tUSER     : %s\n\tURL      : %s\n\tSESSIONID: %s",
-                    c.getMetaData().getUserName(), 
-                    c.getMetaData().getURL(),
-                    sessionId
-            );
-
 
             final JdbcEventBus eventBus = new JdbcEventBus();
 
-            jdbcTracer     = new JdbcTracer(eventBus);
-            JdbcConnectionProxy jdbcConnection = JdbcConnectionProxy.create(c, eventBus);
-            connection = jdbcConnection.proxy();
+            jdbcTracer = new JdbcTracer(eventBus);
+            connection = JdbcConnectionProxy.create(c, eventBus) .proxy();
+
+            traceConnectionInfo(c);
 
             TCStorage.INSTANCE().add(this);
 
@@ -89,6 +83,17 @@ public class TaskContext implements AutoCloseable {
             
             throw new RuntimeException( Tags.PRODUCT_LABEL + "Error on create TaskContext", ex );
         }
+    }
+
+    private void traceConnectionInfo( Connection rawConnection )
+            throws SQLException
+    {
+        jdbcTracer.trace (
+                connection,
+                JdbcTraceType.INFO,
+                "DB connection",
+                U.toMap( "USER", rawConnection.getMetaData().getUserName(), "URL", rawConnection.getMetaData().getURL(), "sessionId", sessionId )
+        );
     }
 
     /** */
@@ -153,39 +158,54 @@ public class TaskContext implements AutoCloseable {
         return connection;
 	}
         
-	/**  */
-    private void doClose() {
-
-        TCStorage.INSTANCE( ).remove( this );
-
-        try {
-
-            if( connection != null )
-            {
-                if(!connection.isClosed())
-                {
-                    if(!connection.getAutoCommit()  )
-                        connection.rollback();
-                    connection.close();
-                }
-            }
-        } catch( SQLException ex ) {
-            ex.printStackTrace();
-        }
-        finally {
-            connection = null;
-            jdbcTracer.close();
-        }
-
-        logger.debug( "TaskContext was closed. session ID: " + sessionId);
-    }
 
     /** */
     @Override
-    public void close() {
-        synchronized(this) {
-            doClose( );
+    public synchronized void close()
+    {
+        if( connection == null )
+            return;
+
+        final Connection c = connection;
+
+        /*
+         * listener закрытия вызывается пока TC ещё доступен.
+         */
+        try
+        {
+            TCStorage.INSTANCE().remove(this);
         }
+        catch( Throwable ex ) {
+            logger.warn( "Error removing TaskContext from storage. session ID: {}", sessionId, ex );
+        }
+
+        connection = null;
+
+        try
+        {
+            try
+            {
+                if( !c.isClosed() && !c.getAutoCommit() )
+                    c.rollback();
+            }
+            catch( SQLException ex ) {
+                logger.warn( "Error rolling back TaskContext. session ID: {}", sessionId, ex );
+            }
+
+            try
+            {
+                if( !c.isClosed() )
+                     c.close();
+            }
+            catch( SQLException ex ) {
+                logger.warn( "Error closing TaskContext connection. session ID: {}", sessionId, ex );
+            }
+        }
+        finally {
+            jdbcTracer.close();
+        }
+
+        logger.debug( "TaskContext was closed. session ID: {}", sessionId );
     }
 
     /**

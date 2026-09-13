@@ -3,266 +3,284 @@ package ru.inversion.tc;
 import ru.inversion.utils.lstn.IListenerManConsumer;
 import ru.inversion.utils.lstn.ListenerManFactory;
 
-import java.lang.ref.WeakReference;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 
+
 /**
+ * Хранилище активных TaskContext.
+ * <p>
+ * TCStorage владеет зарегистрированными TaskContext до их явного удаления
+ * либо до закрытия самого TCStorage.
  *
  * @author ssu
  */
-public class TCStorage implements AutoCloseable {
+public class TCStorage implements AutoCloseable
+{
+    private static final TCStorage instance = new TCStorage();
+
+    private final Lock lock = new ReentrantLock(true);
+
+    /*
+     * экземпляры TaskContext'ов.
+     */
+    private final Set<TaskContext> contexts = Collections.newSetFromMap( new IdentityHashMap<>() );
+
+    private final IListenerManConsumer<BiConsumer<TaskContext, Boolean>> listeners = ListenerManFactory.createListenerManConsumer();
+
+    private boolean closing;
+    private boolean closed;
+
 
     /** */
-    private WeakReference<TaskContext>[] activeTaskContextList = new WeakReference[5];
+    private TCStorage()
+    { }
 
-    final private Lock lock = new ReentrantLock(true);
-
-    private boolean closeMode = false;
-    /** */
-    final private static TCStorage instance = new TCStorage( );
-    /** */
-    public static TCStorage INSTANCE() { return instance; }
 
     /** */
-    final private IListenerManConsumer< BiConsumer<TaskContext, Boolean> > listeners = ListenerManFactory.createListenerManConsumer();
-
-    /** */
-    private TCStorage( ) {
+    public static TCStorage INSTANCE()
+    {
+        return instance;
     }
 
-    /** */
-    public void addListener( BiConsumer<TaskContext, Boolean> l ) { listeners.addListener(l);}
 
     /** */
-    public void removeListener( BiConsumer<TaskContext, Boolean> l ) { listeners.removeListener(l); }
+    public void addListener( BiConsumer<TaskContext, Boolean> listener )
+    {
+        listeners.addListener(listener);
+    }
+
+
+    /** */
+    public void removeListener( BiConsumer<TaskContext, Boolean> listener )
+    {
+        listeners.removeListener(listener);
+    }
+
 
     /** */
     protected void fireOnCreate( TaskContext tc )
     {
-        if( !listeners.isEmpty() )
-             listeners.fire( cns -> cns.accept( tc, true ) );
+        if(!listeners.isEmpty() )
+            listeners.fire(listener -> listener.accept(tc, true) );
     }
 
+
     /** */
-    protected void fireOnClose( TaskContext tc  )
+    protected void fireOnClose( TaskContext tc )
     {
         if( !listeners.isEmpty() )
-             listeners.fire( cns -> cns.accept( tc, false ) );
+            listeners.fire(listener -> listener.accept(tc, false) );
     }
 
-    /** */
-    public TaskContext getBy( Predicate<TaskContext> finder ) {
 
-        final WeakReference< TaskContext >[] wtl = activeTaskContextList;
+    /**
+     * Ищет TaskContext по произвольному условию.
+     */
+    public TaskContext getBy( Predicate<TaskContext> finder )
+    {
+        if( finder == null )
+            return null;
 
-        for( WeakReference<TaskContext> w : wtl )
+        for( TaskContext tc : snapshot() )
         {
-            if( w == null )
-                continue;
-
-            final TaskContext tc = w.get();
-
-            if( tc == null )
-                continue;
-
             if( finder.test(tc) )
                 return tc;
         }
+
         return null;
     }
 
-    /** */
-    public TaskContext getByConnection( Connection c ) {
 
-        /*
-        try {
-            if( c == null || c.isClosed() )
-                return null;
-        } catch(SQLException e) {
-            return null;
-        }
-        */
-
-        if( c == null )
+    /**
+     * Ищет TaskContext по JDBC Connection.
+     */
+    public TaskContext getByConnection( Connection connection )
+    {
+        if( connection == null )
             return null;
 
-        lock.lock();
-
-        try {
-
-        WeakReference< TaskContext >[] wtl = activeTaskContextList;
-
-        for( WeakReference<TaskContext> w : wtl )
+        for( TaskContext tc : snapshot() )
         {
-            if( w == null )
-                continue;
+            try
+            {
+                Connection tcConnection = tc.getConnection();
 
-            final TaskContext tc = w.get();
+                if( tcConnection == connection )
+                    return tc;
 
-            if( tc == null )
-                continue;
-
-            try {
-
-                if( tc.getConnection() == c || tc.getConnection().unwrap( Connection.class ) == c )
+                if( tcConnection.unwrap(Connection.class) == connection )
                     return tc;
             }
-            catch( SQLException ignored ) {
-                ;
-            }
+            catch( SQLException | IllegalStateException ignored )
+            { }
         }
 
         return null;
-
-        } finally {
-            lock.unlock();
-        }
     }
 
-    /** */
-    void add( TaskContext tc ) {
+
+    /**
+     * Регистрирует TaskContext.
+     */
+    void add( TaskContext tc )
+    {
+        if( tc == null )
+            throw new IllegalArgumentException("TaskContext is null");
+
+        boolean added;
 
         lock.lock();
 
-        try {
+        try
+        {
+            if( closing || closed )
+                throw new IllegalStateException("TCStorage is closed");
 
-            WeakReference<TaskContext> w;
-
-            for( int i = 0; i < activeTaskContextList.length; i++ )
-            {
-                w = activeTaskContextList[i];
-
-                if( w == null || w.get() == null ) {
-                    activeTaskContextList[i] = new WeakReference<>(tc);
-
-                    fireOnCreate(tc);
-
-                    return;
-                }
-            }
-
-            activeTaskContextList = Arrays.copyOf( activeTaskContextList, activeTaskContextList.length + 3 );
-            activeTaskContextList[activeTaskContextList.length-3] = new WeakReference<>(tc);
-
-            fireOnCreate(tc);
-
-        } finally {
+            added = contexts.add(tc);
+        }
+        finally {
             lock.unlock();
         }
+
+        /* Listener вызываем после изменения внутреннего набора и вне lock. */
+        if( added )
+            fireOnCreate(tc);
     }
 
-    /** */
-    void remove( TaskContext tc ) {
 
-        if( closeMode )
+    /**
+     * Удаляет TaskContext.
+     */
+    void remove( TaskContext tc )
+    {
+        if( tc == null )
             return;
 
+        boolean removed;
+
         lock.lock();
 
-        try {
-
-            WeakReference<TaskContext> w;
-
-            for( int i = 0; i < activeTaskContextList.length; i++ )
-            {
-                w = activeTaskContextList[i];
-
-                if( w != null && w.get() == tc ) {
-
-                    activeTaskContextList[i] = null;
-
-                    fireOnClose(tc);
-
-                    return;
-                }
-            }
-
-        } finally {
+        try
+        {
+            removed = contexts.remove(tc);
+        }
+        finally
+        {
             lock.unlock();
         }
+
+        /*
+         * В том числе работает во время TCStorage.close().
+         */
+        if( removed )
+            fireOnClose(tc);
     }
 
+
+    /**
+     * Возвращает список активных TaskContext.
+     */
+    public List<TaskContext> getList()
+    {
+        return Collections.unmodifiableList( snapshot() );
+    }
+
+
+    /**
+     * Закрывает все зарегистрированные TaskContext.
+     */
     @Override
-    public void close() {
-
-        closeMode = true;
+    public void close()
+    {
+        List<TaskContext> snapshot;
 
         lock.lock();
 
-        int nActive = 0;
-        int nTotal  = 0;
+        try
+        {
+            if( closing || closed )
+                return;
 
-        try {
+            closing = true;
 
-            WeakReference<TaskContext> w;
-
-            for( int i = 0; i < activeTaskContextList.length; i++ )
-            {
-                nTotal++;
-
-                w = activeTaskContextList[i];
-
-                if( w != null )
-                {
-                    final TaskContext tc = w.get();
-
-                    if( tc != null ) {
-                        tc.close();
-                        nActive++;
-                    }
-                    activeTaskContextList[i] = null;
-                }
-            }
-
-            activeTaskContextList = null;
-
-            System.out.println("TCStorage close - active TC: " + nActive + " of " + nTotal );
-
-        } finally {
+            snapshot = new ArrayList<>(contexts);
+        }
+        finally
+        {
             lock.unlock();
         }
 
+        try
+        {
+            for( TaskContext tc : snapshot )
+            {
+                try
+                {
+                    tc.close();
+                }
+                catch( ThreadDeath | VirtualMachineError fatal )
+                {
+                    throw fatal;
+                }
+                catch( Throwable ignored )
+                {
+                    /*
+                     * Закрытие одного TaskContext не должно мешать
+                     * закрытию остальных.
+                     *
+                     * TODO diagnostics.
+                     */
+                }
+            }
+        }
+        finally
+        {
+            lock.lock();
+
+            try
+            {
+                /*
+                 * В нормальном случае contexts уже пуст:
+                 * TaskContext.close() -> TCStorage.remove().
+                 *
+                 * clear() оставлен как страховка на случай ошибки
+                 * внутри конкретного TaskContext.close().
+                 */
+                contexts.clear();
+
+                closing = false;
+                closed = true;
+            }
+            finally
+            {
+                lock.unlock();
+            }
+        }
     }
 
-    /** */
-    public List<TaskContext> getList( ) {
 
-        final List<TaskContext> tcList = new ArrayList<>();
-
+    /**
+     * Делает snapshot внутреннего списка.
+     */
+    private List<TaskContext> snapshot()
+    {
         lock.lock();
 
         try {
-
-            WeakReference<TaskContext> w;
-
-            for( int i = 0; i < activeTaskContextList.length; i++ )
-            {
-                w = activeTaskContextList[i];
-
-                if( w != null )
-                {
-                    final TaskContext tc = w.get();
-
-                    if( tc != null )
-                        tcList.add(tc);
-                    else
-                        activeTaskContextList[i] = null;
-                }
-            }
-
-        } finally {
+            return new ArrayList<>(contexts);
+        }
+        finally {
             lock.unlock();
         }
-
-        return Collections.unmodifiableList(tcList);
     }
 }

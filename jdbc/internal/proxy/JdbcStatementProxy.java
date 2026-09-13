@@ -47,11 +47,10 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    private final boolean prepared;
    private final boolean callable;
 
-   private boolean closing;
+   private boolean closingResultSets;
 
    /*
-    * Последние успешно установленные
-    * positional IN parameters.
+    * Последние успешно установленные positional IN parameters.
     */
    private final Map<Integer, Object> inParameters = new TreeMap<>();
 
@@ -62,16 +61,11 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
    /*
     * Только Statement-owned cursor ResultSet.
-    *
-    * Identity semantics обязательны.
     */
    private final Map<ResultSet, JdbcResultSetProxy> cursorResultSets = new IdentityHashMap<>();
 
    private Statement proxy;
 
-   /*
-    * Lifecycle state proxy-а.
-    */
    private boolean closed;
 
    private boolean resultTransition;
@@ -831,7 +825,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       boolean hadCursorResultSets = !cursorResultSets.isEmpty();
 
       closed  = true;
-      closing = true;
+      closingResultSets = true;
 
       try
       {
@@ -842,7 +836,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
          fireClose();
       }
       finally {
-         closing = false;
+         closingResultSets = false;
       }
 
       /*
@@ -1092,7 +1086,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        * transaction trigger выполнит statementClosed()
        * после RESULT_SET_CLOSE / STATEMENT_CLOSE.
        */
-      if( closing || resultTransition  )
+      if( closingResultSets || resultTransition  )
           return;
 
       connection.cursorStateChanged();
