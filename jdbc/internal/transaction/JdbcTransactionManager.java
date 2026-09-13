@@ -1,5 +1,6 @@
 package ru.inversion.tc.jdbc.internal.transaction;
 
+import ru.inversion.tc.jdbc.internal.db.JdbcSavepointManager;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 import ru.inversion.utils.Checks;
 
@@ -12,10 +13,12 @@ public final class JdbcTransactionManager
    private final Connection connection;
    private final JdbcLifecycleManager lifecycle;
    private final JdbcTransactionPolicy policy;
+   private final JdbcSavepointManager savepoints;
 
    public JdbcTransactionManager(
       Connection connection,
       JdbcLifecycleManager lifecycle,
+      JdbcSavepointManager savepoints,
       JdbcTransactionPolicy policy
    )
    {
@@ -24,6 +27,7 @@ public final class JdbcTransactionManager
       this.connection = connection;
       this.lifecycle  = lifecycle;
       this.policy     = policy;
+      this.savepoints = savepoints;
    }
 
 
@@ -36,7 +40,7 @@ public final class JdbcTransactionManager
       if( lifecycle.hasOpenCursors() )
           return false;
 
-      if( lifecycle.hasSavepoints() )
+      if( savepoints.hasSavepoints() )
           return false;
 
       if( connection.isClosed() )
@@ -60,12 +64,12 @@ public final class JdbcTransactionManager
       if( lifecycle.hasOpenCursors() )
          return false;
 
-      if( lifecycle.hasSavepoints() )
+      if( savepoints.hasSavepoints() )
          return false;
 
       connection.commit();
 
-      lifecycle.transactionFinished();
+      savepoints.transactionFinished();
 
       return true;
    }

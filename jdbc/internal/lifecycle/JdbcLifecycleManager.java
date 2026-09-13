@@ -16,8 +16,6 @@ public final class JdbcLifecycleManager
 {
    private final Map<ResultSet, CursorReg>  cursors = new IdentityHashMap<>();
 
-   private final Map<Savepoint, Boolean> savepoints = new IdentityHashMap<>();
-
    /**
     * Registration identity используется для защиты
     * от stale JdbcResultSetProxy.
@@ -103,31 +101,4 @@ public final class JdbcLifecycleManager
       return cursors.get( registration.resultSet ) == registration;
    }
 
-
-   /** */
-   public synchronized void savepointSet( Savepoint savepoint )
-   {
-      if( savepoint != null )
-          savepoints.put(savepoint, Boolean.TRUE);
-   }
-
-
-   /** */
-   public synchronized void savepointReleased( Savepoint savepoint )
-   {
-      if( savepoint != null )
-          savepoints.remove(savepoint);
-   }
-
-   /** */
-   public synchronized boolean hasSavepoints()
-   {
-      return !savepoints.isEmpty();
-   }
-
-   /** */
-   public synchronized void transactionFinished()
-   {
-      savepoints.clear();
-   }
 }

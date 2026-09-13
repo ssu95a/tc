@@ -6,6 +6,7 @@ import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupport;
 import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupportFactory;
+import ru.inversion.tc.jdbc.internal.db.JdbcSavepointManager;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionManager;
 
@@ -42,9 +43,6 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /** real JDBC connection*/
    private final Connection connection;
 
-
-   //JdbcSavepointManager
-
    /*
     * Только Statement, созданные данным Connection!
     */
@@ -60,9 +58,11 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /* Флаг, который защищает от зацикливания */
    private int autoFinishSuspendDepth;
 
-   /** Правитель транзакции */
+   /** Правитель транзакциЙ */
    private final JdbcTransactionManager transactionManager;
 
+   //
+   private final JdbcSavepointManager savepoints = new JdbcSavepointManager();
 
    /** */
    private JdbcConnectionProxy( Connection connection, JdbcEventBus eventBus )
@@ -80,6 +80,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       transactionManager = new JdbcTransactionManager(
         connection,     // JDBC
         lifecycle,      // цикл
+        savepoints,
         support.transactionPolicy() // политика работы с транзакцией
       );
    }
@@ -416,7 +417,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       {
          Object value = invokeRaw( method, args );
 
-         lifecycle.transactionFinished();
+         savepoints.transactionFinished();
          /*
           * COMMIT мог закрыть server cursor ResultSet.
           */
@@ -462,7 +463,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
                          args
                  );
 
-         lifecycle.transactionFinished();
+         savepoints.transactionFinished();
          /*
           * ROLLBACK закрывает/инвалидирует cursor state.
           */
@@ -558,18 +559,12 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    {
       try
       {
-         Savepoint savepoint =
-                 (Savepoint) invokeRaw(
-                         method,
-                         args
-                 );
+         Savepoint savepoint = (Savepoint) invokeRaw( method, args );
 
          /*
           * Mandatory correctness state.
           */
-         lifecycle.savepointSet(
-                 savepoint
-         );
+         savepoints.set( savepoint );
 
          /*
           * Observation.
@@ -613,7 +608,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
             Object value = invokeRaw( method, args );
 
             if( autoCommit )
-                lifecycle.transactionFinished();
+               savepoints.transactionFinished();
 
             return value;
          }
@@ -639,7 +634,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       {
          Object value = invokeRaw( method, args );
 
-         lifecycle.savepointReleased( savepoint );
+         savepoints.released( savepoint );
 
          fire (
             EventType.SAVEPOINT_RELEASE,
@@ -765,7 +760,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          statement.closedByConnection();
       }
 
-      lifecycle.transactionFinished();
+      savepoints.transactionFinished();
 
       /*
        * Порядок событий:
