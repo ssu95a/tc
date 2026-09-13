@@ -19,6 +19,7 @@ import java.util.LinkedList;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+
 import ru.inversion.tc.jdbc.internal.proxy.JdbcConnectionProxy;
 
 /**
@@ -26,18 +27,18 @@ import ru.inversion.tc.jdbc.internal.proxy.JdbcConnectionProxy;
  * @author sulimoff
  */
 public class TaskContext implements AutoCloseable {
-    
-    private Connection          connection;
+
+    static final private Logger logger = LoggerFactory.getLogger("ru.inversion.sql");
+
+    private static final AtomicInteger SAVEPOINT_ID_GENERATOR = new AtomicInteger();
+
+    private Connection connection;
+
     private final Long          sessionId;
 
     private final JdbcTracer    jdbcTracer;
 
-    static final private Logger logger = LoggerFactory.getLogger("ru.inversion.sql");
-
     private Map<String,Object>  properties;
-
-    // savePoints support
-    private static final AtomicInteger SAVEPOINT_ID_GENERATOR = new AtomicInteger();
 
     /**  */
     public TaskContext( ) {
@@ -64,14 +65,16 @@ public class TaskContext implements AutoCloseable {
                     sessionId
             );
 
+
             final JdbcEventBus eventBus = new JdbcEventBus();
 
-            jdbcTracer = new JdbcTracer(eventBus);
-            connection = JdbcConnectionProxy.create( c, eventBus ).proxy();
+            jdbcTracer     = new JdbcTracer(eventBus);
+            JdbcConnectionProxy jdbcConnection = JdbcConnectionProxy.create(c, eventBus);
+            connection = jdbcConnection.proxy();
 
             TCStorage.INSTANCE().add(this);
 
-            logger.debug("TaskContext successfully created. session ID: {}", sessionId);
+            logger.debug( "TaskContext successfully created. session ID: {}", sessionId );
         }
 		  catch( Throwable ex ) {
             
@@ -144,15 +147,13 @@ public class TaskContext implements AutoCloseable {
         return connection == null;
     }
 
-	/** 
-     */
+	/**  */
 	public Connection getConnection() {
-		checkForClose( );
+        checkForClose( );
         return connection;
 	}
         
-	/** 
-     */
+	/**  */
     private void doClose() {
 
         TCStorage.INSTANCE( ).remove( this );
@@ -230,10 +231,8 @@ public class TaskContext implements AutoCloseable {
     }
     
     /** */
-    public void commit() {
+    public void commit( ) {
         try {
-
-            clearSavePoints();
 
             if( !isAutoCommit() )
                  connection.commit();
@@ -247,8 +246,6 @@ public class TaskContext implements AutoCloseable {
     public void rollback() {
 
         try {
-
-            clearSavePoints();
 
             if( !isAutoCommit() )
                  connection.rollback();
@@ -277,57 +274,50 @@ public class TaskContext implements AutoCloseable {
         }
     }
 
+
     /** */
-    private void clearSavePoints()
+    public String setSavepoint()
     {
-        if( properties != null )
-            properties.remove("$sp_map$");
-    }
-
-    /** */
-    private Map<String,Savepoint> savePointsMap() {
-        return (Map<String,Savepoint>)properties().computeIfAbsent("$sp_map$", s -> new HashMap<String,Savepoint>());
-    }
-
-    /** */
-    public String setSavepoint( ) {
-        final String name = String.join( "_", "SP_INV", Integer.toString( SAVEPOINT_ID_GENERATOR.addAndGet(1) ) );
-        setSavepoint( name );
+        final String name =String.join("_","SP_INV",Integer.toString(SAVEPOINT_ID_GENERATOR.incrementAndGet()));
+        setSavepoint(name);
         return name;
     }
+
 
     /** */
     public void setSavepoint( String name ) {
         try {
-            savePointsMap().put( name, getConnection().setSavepoint(name) );
+            getConnection().setSavepoint(name);
         } catch(SQLException ex ) {
             throw new RuntimeException( Tags.PRODUCT_LABEL + "Error on call 'setSavepoint(name)'", ex );
         }
     }
 
     /** */
-    public void releaseSavepoint( String name ) {
-
-        try {
-
+    public void releaseSavepoint( String name )
+    {
+        try
+        {
             if( !isPostgreSql() )
-                 return;
+                return;
 
             if( S.isNullOrEmpty(name) )
                 throw new IllegalArgumentException( Tags.PRODUCT_LABEL + "savepoint 'name' is null" );
 
-            final Savepoint savepoint = savePointsMap().remove(name);
+            Savepoint savepoint = JdbcConnectionProxy.findSavepoint( getConnection(), name );
 
-            if( savepoint == null )
-                ;// ниче не делаем либо Exception - throw new IllegalArgumentException( Tags.PRODUCT_LABEL + "savepoint 'name' not found " );
-            else
+            if( savepoint != null )
                 getConnection().releaseSavepoint(savepoint);
-
-        } catch( SQLException ex ) {
-            throw new RuntimeException( Tags.PRODUCT_LABEL + "Error on call 'releaseSavepoint(name)'", ex );
+        }
+        catch( SQLException ex )
+        {
+            throw new RuntimeException(
+                    Tags.PRODUCT_LABEL
+                            + "Error on call 'releaseSavepoint(name)'",
+                    ex
+            );
         }
     }
-
     /** */
     public void rollback( String name ) {
         try {
@@ -335,10 +325,9 @@ public class TaskContext implements AutoCloseable {
             if( S.isNullOrEmpty(name) )
                 throw new IllegalArgumentException( Tags.PRODUCT_LABEL + "savepoint 'name' is null" );
 
-            final Savepoint savepoint = savePointsMap().remove(name);
-            if( savepoint == null )
-                ;// ниче не делаем либо Exception - throw new IllegalArgumentException( Tags.PRODUCT_LABEL + "savepoint 'name' not found " );
-            else
+            Savepoint savepoint = JdbcConnectionProxy.findSavepoint( getConnection(), name );
+
+            if( savepoint != null )
                 getConnection().rollback(savepoint);
 
         } catch(SQLException ex ) {

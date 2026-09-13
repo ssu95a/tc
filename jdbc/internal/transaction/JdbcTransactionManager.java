@@ -31,7 +31,7 @@ public final class JdbcTransactionManager
 
 
    /** */
-   public synchronized boolean tryFinishReadTransaction( ) throws SQLException
+   public synchronized boolean tryCommitIdleTransaction( ) throws SQLException
    {
       /*
        * Универсальные JDBC/lifecycle ограничения.
@@ -52,7 +52,7 @@ public final class JdbcTransactionManager
        * Всё специфичное для конкретной СУБД —
        * только внутри policy.
        */
-      if( !policy.canFinishReadTransaction( connection ) )
+      if( !policy.canCommitIdleTransaction( connection ) )
       {
          return false;
       }
@@ -61,10 +61,10 @@ public final class JdbcTransactionManager
        * Повторная обязательная проверка перед commit.
        */
       if( lifecycle.hasOpenCursors() )
-         return false;
+          return false;
 
       if( savepoints.hasSavepoints() )
-         return false;
+          return false;
 
       connection.commit();
 

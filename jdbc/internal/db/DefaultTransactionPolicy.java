@@ -7,7 +7,7 @@ import java.sql.Connection;
 public final class DefaultTransactionPolicy implements JdbcTransactionPolicy
 {
    @Override
-   public boolean canFinishReadTransaction( Connection connection )
+   public boolean canCommitIdleTransaction(Connection connection )
    {
       return false;
    }

@@ -11,6 +11,7 @@ import ru.inversion.tc.jdbc.internal.transaction.JdbcSavepointManager;
 import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionManager;
 
 
+import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -923,7 +924,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
       try
       {
-         boolean committed = transactionManager.tryFinishReadTransaction();
+         boolean committed = transactionManager.tryCommitIdleTransaction();
 
          if( committed )
          {
@@ -943,6 +944,24 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
           * TODO diagnostics.
           */
       }
+   }
+
+
+   /** Для поиска Savepoint из TaskContext'а */
+   public static Savepoint findSavepoint( Connection connection, String name )
+   {
+      if( connection == null )
+          return null;
+
+      if( !Proxy.isProxyClass(connection.getClass()) )
+          return null;
+
+      InvocationHandler handler = Proxy.getInvocationHandler(connection);
+
+      if( !(handler instanceof JdbcConnectionProxy) )
+         return null;
+
+      return ((JdbcConnectionProxy) handler).savepoints.find(name);
    }
 
 }

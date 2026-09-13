@@ -5,7 +5,6 @@ import ru.inversion.utils.Checks;
 import java.sql.ResultSet;
 import java.util.IdentityHashMap;
 import java.util.Map;
-import java.util.zip.Checksum;
 
 
 /**
@@ -35,24 +34,18 @@ public final class JdbcLifecycleManager
    /**
     * Регистрирует cursor.
     * <p>
-    * Повторная регистрация того же raw ResultSet, если вдруг, возвращает существующую registration.
+    * Регистрация ResultSet
     */
-   public synchronized CursorToken registerCursor(ResultSet resultSet )
+   public synchronized CursorToken registerCursor( ResultSet resultSet )
    {
       Checks.Require.object( resultSet, "resultSet" );
 
-      CursorToken current = cursors.get(resultSet);
+      CursorToken token = new CursorToken(resultSet);
 
-      if( current != null )
-          return current;
+      cursors.put( resultSet, token );
 
-      CursorToken registration = new CursorToken(resultSet);
-
-      cursors.put( resultSet, registration );
-
-      return registration;
+      return token;
    }
-
 
    /**
     * Снимает именно эту registration.

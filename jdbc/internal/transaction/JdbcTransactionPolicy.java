@@ -8,5 +8,5 @@ import java.sql.SQLException;
 public interface JdbcTransactionPolicy
 {
    /** Можем ли завершить транзакцию */
-   boolean canFinishReadTransaction( Connection connection ) throws SQLException;
+   boolean canCommitIdleTransaction(Connection connection ) throws SQLException;
 }

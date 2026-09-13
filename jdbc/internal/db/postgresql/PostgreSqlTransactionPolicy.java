@@ -14,11 +14,11 @@ public final class PostgreSqlTransactionPolicy implements JdbcTransactionPolicy
 
 
    @Override
-   public boolean canFinishReadTransaction( Connection connection )
+   public boolean canCommitIdleTransaction(Connection connection )
            throws SQLException
    {
       if( connection.getTransactionIsolation() != Connection.TRANSACTION_READ_COMMITTED )
-         return false;
+          return false;
 
       return !hasAssignedTransactionId( connection );
    }

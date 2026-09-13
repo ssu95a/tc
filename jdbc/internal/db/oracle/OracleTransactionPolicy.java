@@ -9,7 +9,7 @@ import java.sql.SQLException;
 public final class OracleTransactionPolicy implements JdbcTransactionPolicy
 {
    @Override
-   public boolean canFinishReadTransaction( Connection connection ) throws SQLException
+   public boolean canCommitIdleTransaction(Connection connection ) throws SQLException
    {
       /* Для Oracle никогда автоматически не commit.*/
       return false;
