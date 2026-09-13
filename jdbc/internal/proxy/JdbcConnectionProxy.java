@@ -6,12 +6,11 @@ import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupport;
 import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupportFactory;
-import ru.inversion.tc.jdbc.internal.db.JdbcSavepointManager;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
+import ru.inversion.tc.jdbc.internal.transaction.JdbcSavepointManager;
 import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionManager;
 
 
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -417,7 +416,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       {
          Object value = invokeRaw( method, args );
 
-         savepoints.transactionFinished();
+         savepoints.onTransactionCompleted();
          /*
           * COMMIT мог закрыть server cursor ResultSet.
           */
@@ -463,7 +462,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
                          args
                  );
 
-         savepoints.transactionFinished();
+         savepoints.onTransactionCompleted();
          /*
           * ROLLBACK закрывает/инвалидирует cursor state.
           */
@@ -518,7 +517,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
                          args
                  );
 
-         savepoints.rolledBackTo(savepoint);
+         savepoints.rollbackTo(savepoint);
 
          /*
           * Rollback-to-savepoint также способен изменить состояние ResultSet/portal.
@@ -602,7 +601,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
             Object value = invokeRaw( method, args );
 
             if( autoCommit )
-               savepoints.transactionFinished();
+               savepoints.onTransactionCompleted();
 
             return value;
          }
@@ -754,7 +753,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          statement.closedByConnection();
       }
 
-      savepoints.transactionFinished();
+      savepoints.onTransactionCompleted();
 
       /*
        * Порядок событий:

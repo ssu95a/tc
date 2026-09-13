@@ -1,6 +1,5 @@
 package ru.inversion.tc.jdbc.internal.transaction;
 
-import ru.inversion.tc.jdbc.internal.db.JdbcSavepointManager;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 import ru.inversion.utils.Checks;
 
@@ -17,17 +16,17 @@ public final class JdbcTransactionManager
 
    public JdbcTransactionManager (
       Connection connection,
-      JdbcLifecycleManager lifecycle,
-      JdbcSavepointManager savepoints,
+      JdbcLifecycleManager  lifecycle,
+      JdbcSavepointManager  savepointMan,
       JdbcTransactionPolicy policy
    )
    {
-      Checks.Require.objects( connection, "connection", lifecycle, "lifecycle", savepoints, "savepoints", policy, "policy" );
+      Checks.Require.objects( connection, "connection", lifecycle, "lifecycle", savepointMan, "savepointMan", policy, "policy" );
 
       this.connection = connection;
       this.lifecycle  = lifecycle;
       this.policy     = policy;
-      this.savepoints = savepoints;
+      this.savepoints = savepointMan;
    }
 
 
@@ -69,7 +68,7 @@ public final class JdbcTransactionManager
 
       connection.commit();
 
-      savepoints.transactionFinished();
+      savepoints.onTransactionCompleted();
 
       return true;
    }

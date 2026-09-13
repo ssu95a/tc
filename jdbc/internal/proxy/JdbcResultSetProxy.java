@@ -1,11 +1,9 @@
 package ru.inversion.tc.jdbc.internal.proxy;
 
-import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.event.JdbcResultSetEvent;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -57,7 +55,7 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
     */
    private boolean openEventFired;
 
-   private final JdbcLifecycleManager.CursorReg registration;
+   private final JdbcLifecycleManager.CursorToken registration;
 
 
    /** */

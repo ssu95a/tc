@@ -1,30 +1,31 @@
 package ru.inversion.tc.jdbc.internal.lifecycle;
 
+import ru.inversion.utils.Checks;
+
 import java.sql.ResultSet;
-import java.sql.Savepoint;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.zip.Checksum;
 
 
 /**
  * Жизненный цикл одного соединения
  * <p>
  * Цель:
+ * <p>
  *    отслеживание resultSet-курсоров, открытие, закрытие!
  */
 public final class JdbcLifecycleManager
 {
-   private final Map<ResultSet, CursorReg>  cursors = new IdentityHashMap<>();
+   private final Map<ResultSet, CursorToken>  cursors = new IdentityHashMap<>();
 
    /**
-    * Registration identity используется для защиты
-    * от stale JdbcResultSetProxy.
+    * Registration identity используется для защиты от удаления "двойника".
     */
-   public static final class CursorReg
+   public static final class CursorToken
    {
       private final ResultSet resultSet;
-
-      private CursorReg(ResultSet resultSet)
+      private CursorToken(ResultSet resultSet)
       {
          this.resultSet = resultSet;
       }
@@ -34,20 +35,18 @@ public final class JdbcLifecycleManager
    /**
     * Регистрирует cursor.
     * <p>
-    * Повторная регистрация того же raw ResultSet
-    * возвращает существующую registration.
+    * Повторная регистрация того же raw ResultSet, если вдруг, возвращает существующую registration.
     */
-   public synchronized CursorReg registerCursor( ResultSet resultSet )
+   public synchronized CursorToken registerCursor(ResultSet resultSet )
    {
-      if( resultSet == null )
-         throw new IllegalArgumentException( "resultSet is null" );
+      Checks.Require.object( resultSet, "resultSet" );
 
-      CursorReg current = cursors.get(resultSet);
+      CursorToken current = cursors.get(resultSet);
 
       if( current != null )
           return current;
 
-      CursorReg registration = new CursorReg(resultSet);
+      CursorToken registration = new CursorToken(resultSet);
 
       cursors.put( resultSet, registration );
 
@@ -58,16 +57,16 @@ public final class JdbcLifecycleManager
    /**
     * Снимает именно эту registration.
     * <p>
-    * Stale registration безопасно вернёт false.
+    * Если тот же курсор зареган еще раз, где-то, то не удалим!
     */
-   public synchronized boolean unregisterCursor( CursorReg registration )
+   public synchronized boolean unregisterCursor( CursorToken registration )
    {
       if( registration == null )
           return false;
 
       ResultSet resultSet = registration.resultSet;
 
-      CursorReg current = cursors.get(resultSet);
+      CursorToken current = cursors.get(resultSet);
 
       if( current != registration )
           return false;
@@ -89,16 +88,6 @@ public final class JdbcLifecycleManager
    public synchronized boolean hasOpenCursors()
    {
       return !cursors.isEmpty();
-   }
-
-
-   /** */
-   public synchronized boolean isRegistered( CursorReg registration )
-   {
-      if( registration == null )
-         return false;
-
-      return cursors.get( registration.resultSet ) == registration;
    }
 
 }

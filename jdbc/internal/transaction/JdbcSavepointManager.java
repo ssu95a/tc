@@ -1,4 +1,4 @@
-package ru.inversion.tc.jdbc.internal.db;
+package ru.inversion.tc.jdbc.internal.transaction;
 
 import java.sql.Savepoint;
 import java.util.ArrayList;
@@ -24,7 +24,7 @@ public final class JdbcSavepointManager
    public synchronized void set( Savepoint savepoint, String name )
    {
       if( savepoint == null )
-         throw new IllegalArgumentException( "savepoint is null" );
+          throw new IllegalArgumentException( "savepoint is null" );
 
       savepoints.add( new SavepointReg( savepoint, name ) );
    }
@@ -36,80 +36,65 @@ public final class JdbcSavepointManager
    }
 
 
-   public synchronized Savepoint find(
-           String name
-   )
+   /** */
+   public synchronized Savepoint find( String name )
    {
       for( int i = savepoints.size() - 1; i >= 0; i-- )
       {
          SavepointReg reg = savepoints.get(i);
 
          if( Objects.equals( name, reg.name ) )
-            return reg.savepoint;
+             return reg.savepoint;
       }
 
       return null;
    }
 
 
-   public synchronized void released(
-           Savepoint savepoint
-   )
+   /** */
+   public synchronized void released( Savepoint savepoint )
    {
-      int index =
-              indexOf(savepoint);
+      int index = indexOf(savepoint);
 
       if( index >= 0 )
-         removeFrom(index);
+          removeFrom( index );
    }
 
 
-   public synchronized void rolledBackTo(
-           Savepoint savepoint
-   )
+   /** */
+   public synchronized void rollbackTo( Savepoint savepoint )
    {
-      int index =
-              indexOf(savepoint);
+      int index = indexOf(savepoint);
 
       if( index >= 0 )
          removeFrom(index + 1);
    }
 
 
-   public synchronized void transactionFinished()
+   /** */
+   public synchronized void onTransactionCompleted()
    {
       savepoints.clear();
    }
 
 
-   private int indexOf(
-           Savepoint savepoint
-   )
+   /** */
+   private int indexOf( Savepoint savepoint )
    {
-      for( int i = savepoints.size() - 1;
-           i >= 0;
-           i-- )
+      for( int i = savepoints.size() - 1; i >= 0; i-- )
       {
-         if( savepoints.get(i).savepoint
-                 == savepoint )
-         {
-            return i;
-         }
+         if( savepoints.get(i).savepoint == savepoint )
+             return i;
       }
 
       return -1;
    }
 
 
-   private void removeFrom(
-           int index
-   )
+   /** */
+   private void removeFrom( int index )
    {
-      for( int i = savepoints.size() - 1;
-           i >= index;
-           i-- )
-      {
-         savepoints.remove(i);
-      }
+      if( index < savepoints.size() )
+         savepoints.subList( index, savepoints.size() ).clear();
    }
 }
