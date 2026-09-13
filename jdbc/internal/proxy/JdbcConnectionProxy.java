@@ -509,23 +509,23 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
       try
       {
+         Savepoint savepoint =
+                 (Savepoint) args[0];
+
          Object value =
                  invokeRaw(
                          method,
                          args
                  );
 
+         savepoints.rolledBackTo(savepoint);
+
          /*
-          * Rollback-to-savepoint также способен
-          * изменить состояние ResultSet/portal.
+          * Rollback-to-savepoint также способен изменить состояние ResultSet/portal.
           */
          syncStatements();
 
-         fire(
-                 EventType.SAVEPOINT_ROLLBACK,
-                 EventPhase.AFTER,
-                 null
-         );
+         fire( EventType.SAVEPOINT_ROLLBACK, EventPhase.AFTER, null );
 
          return value;
       }
@@ -561,30 +561,24 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       {
          Savepoint savepoint = (Savepoint) invokeRaw( method, args );
 
-         /*
-          * Mandatory correctness state.
-          */
-         savepoints.set( savepoint );
+         String name =
+                 args != null
+                         && args.length == 1
+                         && args[0] instanceof String
+                         ? (String) args[0]
+                         : null;
+
+         savepoints.set( savepoint, name );
 
          /*
           * Observation.
           */
-         fire(
-                 EventType.SAVEPOINT_SET,
-                 EventPhase.AFTER,
-                 null
-         );
+         fire( EventType.SAVEPOINT_SET, EventPhase.AFTER, null );
 
          return savepoint;
       }
-      catch( Throwable throwable )
-      {
-         fire(
-                 EventType.SAVEPOINT_SET,
-                 EventPhase.ERROR,
-                 throwable
-         );
-
+      catch( Throwable throwable ) {
+         fire( EventType.SAVEPOINT_SET, EventPhase.ERROR, throwable );
          throw throwable;
       }
    }
@@ -894,10 +888,10 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
     * нет, Connection/transaction/savepoint события
     * представлены базовым JdbcEvent.
     */
-   private void fire(
-           EventType type,
-           EventPhase phase,
-           Throwable throwable
+   private void fire (
+      EventType type,
+      EventPhase phase,
+      Throwable throwable
    )
    {
       if( eventBus == null )

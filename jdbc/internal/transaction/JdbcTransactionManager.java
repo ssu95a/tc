@@ -15,14 +15,14 @@ public final class JdbcTransactionManager
    private final JdbcTransactionPolicy policy;
    private final JdbcSavepointManager savepoints;
 
-   public JdbcTransactionManager(
+   public JdbcTransactionManager (
       Connection connection,
       JdbcLifecycleManager lifecycle,
       JdbcSavepointManager savepoints,
       JdbcTransactionPolicy policy
    )
    {
-      Checks.Require.objects( connection, "connection", lifecycle, "lifecycle", policy, "policy" );
+      Checks.Require.objects( connection, "connection", lifecycle, "lifecycle", savepoints, "savepoints", policy, "policy" );
 
       this.connection = connection;
       this.lifecycle  = lifecycle;
