@@ -57,8 +57,7 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
       eventBus.addListener( JdbcEvent.class, this );
 
       /*
-       * Default trace destination.
-       * Аналог legacy QueryDBTracer.
+       * Default trace
        */
       addListener( JdbcTraceLoggerListener.instance() );
    }
@@ -68,45 +67,30 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
     * Получение low-level JDBC event.
     */
    @Override
-   public void onJdbcEvent(
-           JdbcEvent event
-   )
+   public void onJdbcEvent( JdbcEvent event )
    {
       if( event == null )
-         return;
+          return;
 
-      if( !isTraceEnabled(
-              JdbcTraceType.JDBC
-      ) )
-      {
-         return;
-      }
+      if( !isTraceEnabled( JdbcTraceType.JDBC ) )
+          return;
 
-      fire(
-              JdbcTraceEvent.jdbc(event)
-      );
+      fire( JdbcTraceEvent.jdbc(event) );
    }
 
 
    /**
     * Публикация готового trace event.
-    *
-    * Используется в том числе для событий,
-    * которые не имеют JdbcEvent origin.
+    * <p>
+    * Используется, в том числе для событий, которые не имеют JdbcEvent origin.
     */
-   public void trace(
-           JdbcTraceEvent event
-   )
+   public void trace( JdbcTraceEvent event )
    {
       if( event == null )
-         return;
+          return;
 
-      if( !isTraceEnabled(
-              event.type()
-      ) )
-      {
+      if( !isTraceEnabled( event.type() ) )
          return;
-      }
 
       fire(event);
    }
@@ -115,70 +99,42 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
    /**
     * Custom trace event.
     */
-   public void trace(
-           Object source,
-           JdbcTraceType type,
-           String text
-   )
+   public void trace( Object source, JdbcTraceType type, String text )
    {
       if( !isTraceEnabled(type) )
          return;
 
-      fire(
-              JdbcTraceEvent.custom(
-                      source,
-                      type,
-                      text
-              )
-      );
+      fire( JdbcTraceEvent.custom( source, type, text ) );
    }
 
 
    /**
     * Custom trace event с properties.
     */
-   public void trace(
-           Object source,
-           JdbcTraceType type,
-           String text,
-           Map<String, Object> properties
-   )
+   public void trace( Object source, JdbcTraceType type, String text, Map<String, Object> properties )
    {
       if( !isTraceEnabled(type) )
          return;
 
-      fire(
-              JdbcTraceEvent.custom(
-                      source,
-                      type,
-                      text,
-                      properties
-              )
-      );
+      fire( JdbcTraceEvent.custom( source, type, text, properties ) );
    }
 
 
    /** */
-   public synchronized void addListener(
-           JdbcTraceListener listener
-   )
+   public synchronized void addListener( JdbcTraceListener listener )
    {
       if( listener == null )
-         return;
+          return;
 
       if( closed )
-         throw new IllegalStateException(
-                 "JdbcTracer is closed"
-         );
+          throw new IllegalStateException( "JdbcTracer is closed" );
 
       listeners.addListener(listener);
    }
 
 
    /** */
-   public synchronized void removeListener(
-           JdbcTraceListener listener
-   )
+   public synchronized void removeListener( JdbcTraceListener listener )
    {
       if( listener == null )
          return;
@@ -195,9 +151,7 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
 
 
    /** */
-   public void setEnabled(
-           boolean enabled
-   )
+   public void setEnabled( boolean enabled )
    {
       this.enabled = enabled;
    }
@@ -207,15 +161,11 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
     * Включение/выключение отдельной
     * trace category.
     */
-   public synchronized void setEnabled(
-           JdbcTraceType type,
-           boolean enabled
-   )
+   public synchronized void setEnabled( JdbcTraceType type, boolean enabled )
    {
       if( type == null )
-         throw new IllegalArgumentException(
-                 "type is null"
-         );
+          //throw new IllegalArgumentException( "type is null" );
+         return;
 
       if( enabled )
          enabledTypes.add(type);
@@ -225,12 +175,10 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
 
 
    /** */
-   public synchronized boolean isEnabled(
-           JdbcTraceType type
-   )
+   public synchronized boolean isEnabled( JdbcTraceType type  )
    {
       if( type == null )
-         return false;
+          return false;
 
       return enabledTypes.contains(type);
    }
@@ -239,9 +187,7 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
    /**
     * Общий + category-level switch.
     */
-   private boolean isTraceEnabled(
-           JdbcTraceType type
-   )
+   private boolean isTraceEnabled( JdbcTraceType type )
    {
       if( !enabled )
          return false;
@@ -256,23 +202,10 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
     * Каждый listener изолирован отдельно:
     * один broken listener не мешает остальным.
     */
-   private void fire(
-           JdbcTraceEvent event
-   )
+   private void fire( JdbcTraceEvent event )
    {
-      try
-      {
-         listeners.fire(
-                 listener ->
-                         fireListener(
-                                 listener,
-                                 event
-                         )
-         );
-      }
-      catch( ThreadDeath | VirtualMachineError fatal )
-      {
-         throw fatal;
+      try {
+         listeners.fire( listener -> fireListener( listener, event ) );
       }
       catch( Throwable ignored )
       {
@@ -287,10 +220,7 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
 
 
    /** */
-   private static void fireListener(
-           JdbcTraceListener listener,
-           JdbcTraceEvent event
-   )
+   private static void fireListener( JdbcTraceListener listener, JdbcTraceEvent event )
    {
       try
       {
@@ -320,13 +250,9 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
    public synchronized void close()
    {
       if( closed )
-         return;
+          return;
 
       closed = true;
-
-      eventBus.removeListener(
-              JdbcEvent.class,
-              this
-      );
+      eventBus.removeListener( JdbcEvent.class, this );
    }
 }

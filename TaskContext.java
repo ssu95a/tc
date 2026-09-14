@@ -208,17 +208,8 @@ public class TaskContext implements AutoCloseable {
         logger.debug( "TaskContext was closed. session ID: {}", sessionId );
     }
 
-    /**
-     * @return  */
-    public IQueryDBTracer getQueryDBTracer( ) {
-        return null;
-    }
-    
-    /**
-     * @return  */
-    public Long getSessionID( ) {
-        return sessionId;
-    }
+    /** */
+    public Long getSessionID( ) { return sessionId; }
     
     /** */
     public String getUserName( ) {

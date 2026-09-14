@@ -56,7 +56,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    private volatile boolean closed;
 
    /* Флаг, который защищает от зацикливания */
-   private int autoFinishSuspendDepth;
+   private int autoFinishLevel;
 
    /** Правитель транзакциЙ */
    private final JdbcTransactionManager transactionManager;
@@ -88,20 +88,20 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /** */
    private synchronized void suspendAutoFinish()
    {
-      autoFinishSuspendDepth++;
+      autoFinishLevel++;
    }
 
    private synchronized void resumeAutoFinish()
    {
-      if( autoFinishSuspendDepth <= 0 )
+      if( autoFinishLevel <= 0 )
           throw new IllegalStateException( "Auto-finish is not suspended" );
-      autoFinishSuspendDepth--;
+      autoFinishLevel--;
    }
 
    /** */
    private synchronized boolean isAutoFinishSuspended()
    {
-      return autoFinishSuspendDepth != 0;
+      return autoFinishLevel != 0;
    }
 
    /**
@@ -617,6 +617,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          }
       }
 
+
    /**
     * Connection.releaseSavepoint(...).
     */
@@ -626,26 +627,23 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
       try
       {
-         Object value = invokeRaw( method, args );
+         Object value = invokeRaw(method, args);
 
-         savepoints.released( savepoint );
+         savepoints.released(savepoint);
 
-         fire (
-            EventType.SAVEPOINT_RELEASE,
-            EventPhase.AFTER,
-            null
-         );
+         fire( EventType.SAVEPOINT_RELEASE, EventPhase.AFTER, null );
+
+         /*
+          * Savepoint мог быть последним препятствием
+          * для commit idle transaction.
+          */
+         cursorStateChanged();
 
          return value;
       }
       catch( Throwable throwable )
       {
-         fire (
-           EventType.SAVEPOINT_RELEASE,
-           EventPhase.ERROR,
-           throwable
-         );
-
+         fire( EventType.SAVEPOINT_RELEASE, EventPhase.ERROR, throwable );
          throw throwable;
       }
    }
@@ -935,14 +933,8 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
             );
          }
       }
-      catch( SQLException | RuntimeException ignored  )
-      {
-         /*
-          * Auto-finish is best effort.
-          * Никакого rollback.
-          *
-          * TODO diagnostics.
-          */
+      catch( SQLException | RuntimeException ex  ) {
+         fire( EventType.WARNING, EventPhase.ERROR, ex );
       }
    }
 
@@ -951,17 +943,16 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    public static Savepoint findSavepoint( Connection connection, String name )
    {
       if( connection == null )
-          return null;
+         throw new IllegalArgumentException( "connection is null" );
 
       if( !Proxy.isProxyClass(connection.getClass()) )
-          return null;
+         throw new IllegalStateException( "Connection is not JdbcConnectionProxy" );
 
       InvocationHandler handler = Proxy.getInvocationHandler(connection);
 
       if( !(handler instanceof JdbcConnectionProxy) )
-         return null;
+         throw new IllegalStateException( "Connection is not JdbcConnectionProxy" );
 
       return ((JdbcConnectionProxy) handler).savepoints.find(name);
    }
-
 }

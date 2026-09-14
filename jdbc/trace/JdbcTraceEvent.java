@@ -1,6 +1,7 @@
 package ru.inversion.tc.jdbc.trace;
 
 import ru.inversion.tc.jdbc.event.JdbcEvent;
+import ru.inversion.utils.Checks;
 
 import java.io.Writer;
 import java.util.Collections;
@@ -10,24 +11,18 @@ import java.util.Map;
 
 
 /**
- * Событие tracing layer.
- *
+ * <h5>Событие tracing layer.</h5>
  * Может:
- *
- * 1. оборачивать low-level JdbcEvent;
- * 2. быть самостоятельным trace-событием,
- *    не связанным с JDBC объектом.
- *
- * Для JDBC-origin события данные JdbcEvent
- * не копируются и остаются единственным
- * источником истины.
+ * <ol>
+ * <li>Оборачивать low-level JdbcEvent;
+ * <li>Быть самостоятельным trace-событием, не связанным с JDBC объектом.
+ * </ol>
+ * Для JDBC-origin события данные JdbcEvent не копируются
  */
 public final class JdbcTraceEvent extends EventObject
 {
    /*
-    * Исходное JDBC событие.
-    *
-    * null для custom trace events.
+    * Исходное JDBC событие, null для custom trace events.
     */
    private final JdbcEvent jdbcEvent;
 
@@ -59,38 +54,31 @@ public final class JdbcTraceEvent extends EventObject
 
 
    /** */
-   private JdbcTraceEvent(
-           Object source,
-           JdbcEvent jdbcEvent,
-           JdbcTraceType type,
-           String text,
-           Map<String, Object> properties
+   private JdbcTraceEvent (
+      Object source,
+      JdbcEvent jdbcEvent,
+      JdbcTraceType type,
+      String text,
+      Map<String, Object> properties
    )
    {
-      super(requireSource(source));
+      super( source );
 
-      if( type == null )
-         throw new IllegalArgumentException(
-                 "type is null"
-         );
+      Checks.Require.object( type,"type" );
 
       this.jdbcEvent = jdbcEvent;
       this.type      = type;
       this.text      = text;
 
-      timestampNanos =
-              jdbcEvent != null
-                      ? jdbcEvent.timestampNanos()
-                      : System.nanoTime();
+      this.timestampNanos = jdbcEvent != null ? jdbcEvent.timestampNanos() : System.nanoTime();
 
-      this.properties =
-              snapshot(properties);
+      this.properties= snapshot(properties);
    }
 
 
    /**
-    * Исходное low-level JDBC событие.
-    *
+    * Исходное JDBC событие.
+    * <p>
     * @return JdbcEvent или null для custom trace event
     */
    public JdbcEvent jdbcEvent()
@@ -138,135 +126,61 @@ public final class JdbcTraceEvent extends EventObject
     * Получить дополнительное trace property.
     */
    @SuppressWarnings("unchecked")
-   public <T> T property(
-           String name
-   )
+   public <T> T property( String name )
    {
       if( name == null )
          return null;
-
       return (T) properties.get(name);
    }
 
 
    /**
     * Wrap low-level JDBC event.
-    *
-    * JdbcEvent остаётся единственным
-    * источником JDBC-specific данных.
     */
-   public static JdbcTraceEvent jdbc(
-           JdbcEvent event
-   )
+   public static JdbcTraceEvent jdbc( JdbcEvent event )
    {
-      if( event == null )
-         throw new IllegalArgumentException(
-                 "event is null"
-         );
-
-      return new JdbcTraceEvent(
-              event.getSource(),
-              event,
-              JdbcTraceType.JDBC,
-              null,
-              null
-      );
+      return jdbc(event, null);
    }
 
 
    /**
-    * Wrap low-level JDBC event
-    * с дополнительными trace properties.
+    * Wrap low-level JDBC event, properties ver
     */
-   public static JdbcTraceEvent jdbc(
-           JdbcEvent event,
-           Map<String, Object> properties
-   )
+   public static JdbcTraceEvent jdbc( JdbcEvent event, Map<String, Object> properties )
    {
-      if( event == null )
-         throw new IllegalArgumentException(
-                 "event is null"
-         );
-
-      return new JdbcTraceEvent(
-              event.getSource(),
-              event,
-              JdbcTraceType.JDBC,
-              null,
-              properties
-      );
+      Checks.Require.object( event,"event" );
+      return new JdbcTraceEvent( event.getSource(), event, JdbcTraceType.JDBC, null, properties );
    }
 
 
    /**
-    * Самостоятельное trace-событие,
-    * не имеющее JdbcEvent origin.
+    * Самостоятельное trace-событие, не имеющее JdbcEvent origin.
     */
-   public static JdbcTraceEvent custom(
-           Object source,
-           JdbcTraceType type,
-           String text
-   )
+   public static JdbcTraceEvent custom( Object source, JdbcTraceType type, String text )
    {
-      return new JdbcTraceEvent(
-              source,
-              null,
-              type,
-              text,
-              null
-      );
+      return custom( source, type, text, null);
    }
 
 
    /**
-    * Самостоятельное trace-событие
-    * с дополнительными properties.
+    * Самостоятельное trace-событие с properties.
     */
-   public static JdbcTraceEvent custom(
-           Object source,
-           JdbcTraceType type,
-           String text,
-           Map<String, Object> properties
-   )
+   public static JdbcTraceEvent custom( Object source, JdbcTraceType type, String text, Map<String, Object> properties )
    {
-      return new JdbcTraceEvent(
-              source,
-              null,
-              type,
-              text,
-              properties
-      );
+      return new JdbcTraceEvent( source, null, type, text, properties );
    }
 
 
-   /** */
-   private static Map<String, Object> snapshot(
-           Map<String, Object> source
-   )
+   /** Копия параметров */
+   private static Map<String, Object> snapshot( Map<String, Object> source )
    {
       if( source == null || source.isEmpty() )
-         return Collections.emptyMap();
+          return Collections.emptyMap();
 
-      return Collections.unmodifiableMap(
-              new LinkedHashMap<>(source)
-      );
+      return Collections.unmodifiableMap( new LinkedHashMap<>(source) );
    }
 
-
-   /** */
-   private static Object requireSource(
-           Object source
-   )
-   {
-      if( source == null )
-         throw new IllegalArgumentException(
-                 "source is null"
-         );
-
-      return source;
-   }
-
-   /** */
+   /** Вывод в оут */
    public void print( Writer writer )
    {
       JdbcTraceEventWriter.write( this, writer );

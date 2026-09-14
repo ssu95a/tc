@@ -34,7 +34,7 @@ public final class JdbcTraceLoggerListener implements JdbcTraceListener
       else
       {
          if( logger.isDebugEnabled() )
-            logger.debug(eventToString(event));
+             logger.debug( eventToString(event) );
       }
    }
 

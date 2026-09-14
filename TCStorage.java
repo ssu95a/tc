@@ -4,7 +4,9 @@ import ru.inversion.utils.lstn.IListenerManConsumer;
 import ru.inversion.utils.lstn.ListenerManFactory;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -17,10 +19,8 @@ import java.util.function.Predicate;
 
 
 /**
- * Хранилище активных TaskContext.
- * <p>
- * TCStorage владеет зарегистрированными TaskContext до их явного удаления
- * либо до закрытия самого TCStorage.
+ * <h5>Хранилище активных TaskContext.</h5>
+ * TCStorage владеет зарегистрированными TaskContext до их явного удаления либо до закрытия самого TCStorage.
  *
  * @author ssu
  */
@@ -148,15 +148,31 @@ public class TCStorage implements AutoCloseable
 
             added = contexts.add(tc);
         }
-        finally {
+        finally
+        {
             lock.unlock();
         }
 
-        /* Listener вызываем после изменения внутреннего набора и вне lock. */
-        if( added )
-            fireOnCreate(tc);
-    }
+        if( !added )
+            return;
 
+        try {
+            fireOnCreate(tc);
+        }
+        catch( Throwable ex )
+        {
+            lock.lock();
+
+            try {
+                // Убираем сломанный Tc
+                contexts.remove(tc);
+            }
+            finally {
+                lock.unlock();
+            }
+            throw ex;
+        }
+    }
 
     /**
      * Удаляет TaskContext.
@@ -235,10 +251,8 @@ public class TCStorage implements AutoCloseable
                 catch( Throwable ignored )
                 {
                     /*
-                     * Закрытие одного TaskContext не должно мешать
-                     * закрытию остальных.
-                     *
-                     * TODO diagnostics.
+                     * Закрытие одного TaskContext не должно мешать закрытию остальных.
+                     * TODO logging.
                      */
                 }
             }
@@ -250,11 +264,8 @@ public class TCStorage implements AutoCloseable
             try
             {
                 /*
-                 * В нормальном случае contexts уже пуст:
-                 * TaskContext.close() -> TCStorage.remove().
-                 *
-                 * clear() оставлен как страховка на случай ошибки
-                 * внутри конкретного TaskContext.close().
+                 * В нормальном случае contexts уже пуст: TaskContext.close() -> TCStorage.remove().
+                 * clear() оставлен как страховка на случай ошибки внутри конкретного TaskContext.close().
                  */
                 contexts.clear();
 

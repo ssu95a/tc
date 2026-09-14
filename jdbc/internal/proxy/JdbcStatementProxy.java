@@ -1083,8 +1083,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        * Во время Statement.close() ResultSet-ы
        * закрываются пачкой.
        *
-       * transaction trigger выполнит statementClosed()
-       * после RESULT_SET_CLOSE / STATEMENT_CLOSE.
        */
       if( closingResultSets || resultTransition  )
           return;
