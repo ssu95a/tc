@@ -254,7 +254,7 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
 
       statement.syncClosedState();
 
-      if( removed )
+      if( removed && !statement.isLifecycleClosed() )
           statement.cursorStateChanged();
    }
 

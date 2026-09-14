@@ -827,8 +827,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       if( closed )
           return;
 
-      boolean hadCursorResultSets = !cursorResultSets.isEmpty();
-
       closed  = true;
       closingResultSets = true;
 
