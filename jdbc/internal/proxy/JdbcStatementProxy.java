@@ -474,10 +474,13 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       );
 
       if( newCursor != null )
-          newCursor.fireOpen();
-      else
+      {
+         newCursor.fireOpen();
+      }
+      else if( !"execute".equals(methodName) || (Boolean.FALSE.equals(value) && statement.getUpdateCount() == -1) )
+      {
          connection.transactionStateChanged();
-
+      }
       /*
        * executeQuery() наружу должен вернуть proxy.
        */
