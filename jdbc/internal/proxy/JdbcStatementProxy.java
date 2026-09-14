@@ -474,7 +474,9 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       );
 
       if( newCursor != null )
-         newCursor.fireOpen();
+          newCursor.fireOpen();
+      else
+         connection.transactionStateChanged();
 
       /*
        * executeQuery() наружу должен вернуть proxy.
@@ -523,7 +525,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
          if( !Boolean.TRUE.equals(value) && statement.getUpdateCount() == -1 )
          {
             resultTransition = false;
-            connection.cursorStateChanged();
+            connection.transactionStateChanged();
          }
 
          return value;
@@ -848,7 +850,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        * trigger придёт от ResultSet после syncClosedState().
        */
       if( hadCursorResultSets )
-         connection.cursorStateChanged();
+         connection.transactionStateChanged();
    }
 
 
@@ -1087,6 +1089,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       if( closingResultSets || resultTransition  )
           return;
 
-      connection.cursorStateChanged();
+      connection.transactionStateChanged();
    }
 }

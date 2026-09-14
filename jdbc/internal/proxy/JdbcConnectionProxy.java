@@ -637,7 +637,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
           * Savepoint мог быть последним препятствием
           * для commit idle transaction.
           */
-         cursorStateChanged();
+         transactionStateChanged();
 
          return value;
       }
@@ -909,7 +909,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /** */
-   void cursorStateChanged()
+   void transactionStateChanged()
    {
       if( closed )
          return;
