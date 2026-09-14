@@ -845,15 +845,8 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       }
 
       /*
-       * Auto-finish нужен только если Statement.close()
-       * действительно завершил cursor lifecycle.
-       *
-       * Для closeOnCompletion cursor уже удалён раньше
-       * в JdbcResultSetProxy.lifecycleClosed(), поэтому
-       * trigger придёт от ResultSet после syncClosedState().
        */
-      if( hadCursorResultSets )
-         connection.transactionStateChanged();
+      connection.transactionStateChanged();
    }
 
 
