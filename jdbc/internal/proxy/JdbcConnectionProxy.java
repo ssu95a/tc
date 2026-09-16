@@ -135,13 +135,6 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
    /**
     * Raw connection.
-    * <p>
-    * Не public намеренно.
-    * <p>
-    * В будущем именно этот connection должен
-    * использовать lifecycle для PostgreSQL
-    * pg_current_xact_id_if_assigned() и auto-finish
-    * read transaction, минуя proxy/events.
     */
    Connection raw()
    {
@@ -298,8 +291,6 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Wrap Statement.
     *
-    * ВАЖНО:
-    *
     * порядок:
     *
     * raw Statement created
@@ -310,8 +301,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
     *      |
     * STATEMENT_OPEN
     *
-    * То есть listener STATEMENT_OPEN уже видит
-    * полностью зарегистрированный Statement.
+    * То есть listener STATEMENT_OPEN уже видит полностью зарегистрированный Statement.
     */
    private Statement wrapStatement( Statement statement, String sql ) throws Throwable
    {
@@ -346,9 +336,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       catch( Throwable throwable )
       {
          /*
-          * Если proxy construction/registration
-          * не удались, raw Statement наружу
-          * выпускать нельзя.
+          * Если proxy construction/registration упали, raw Statement наружу выпускать нельзя.
           */
          if( handler != null )
          {
@@ -716,8 +704,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /**
-    * Единственная точка завершения
-    * нашего Connection lifecycle.
+    * Точка завершения Connection lifecycle.
     */
    private void connectionClosed()
    {
@@ -726,23 +713,20 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       synchronized( this )
       {
          if( closed )
-            return;
+             return;
 
          closed = true;
 
          snapshot = new ArrayList<>( statements.values() );
 
          /*
-          * Сначала owner registry.
-          *
-          * Callback от StatementProxy далее
-          * станет безопасным no-op.
+          * Чистим свой registry первым.
           */
          statements.clear();
       }
 
       /*
-       * Raw Connection уже закрыт.
+       * Сам JDBC Connection уже закрыт.
        *
        * Statement.close() повторно НЕ вызываем.
        * Только синхронизируем наши lifecycle states.
@@ -799,8 +783,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /**
-    * SQL является первым argument
-    * prepareStatement()/prepareCall().
+    * SQL является первым argument prepareStatement()/prepareCall().
     */
    private static String sql( Object[] args )
    {
@@ -811,9 +794,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    }
 
 
-   /**
-    * Raw invocation.
-    */
+   /** */
    private Object invokeRaw( Method method, Object[] args ) throws Throwable
    {
       try
@@ -828,8 +809,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /**
-    * Raw Statement cleanup при ошибке
-    * построения proxy.
+    * Raw Statement cleanup при ошибке построения proxy.
     */
    private static void closeRawStatement( Statement statement )
    {
@@ -855,8 +835,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       catch( SQLException ignored )
       {
          /*
-          * Консервативно считаем Connection
-          * ещё открытым.
+          * считаем Connection ещё открытым.
           */
          return false;
       }
@@ -882,8 +861,8 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /**
-    * Пока специализированного JdbcConnectionEvent
-    * нет, Connection/transaction/savepoint события
+    * Пока специализированного JdbcConnectionEvent нет,
+    * Connection/transaction/savepoint события
     * представлены базовым JdbcEvent.
     */
    private void fire (

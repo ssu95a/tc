@@ -32,11 +32,7 @@ public final class JdbcDatabaseSupportFactory
          }
       }
       catch( SQLException ignored )
-      {
-         /*
-          * DB-specific optimizations disabled.
-          */
-      }
+      { }
       return new DefaultDatabaseSupport();
    }
 }

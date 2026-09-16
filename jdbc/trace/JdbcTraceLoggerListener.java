@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.StringWriter;
 
-
+/** <h5>Trace-слушатель, логгер версия </h5>*/
 public final class JdbcTraceLoggerListener implements JdbcTraceListener
 {
    private static final JdbcTraceLoggerListener INSTANCE = new JdbcTraceLoggerListener();
@@ -29,7 +29,7 @@ public final class JdbcTraceLoggerListener implements JdbcTraceListener
       if( isError(event) )
       {
          if( logger.isErrorEnabled() )
-             logger.error(eventToString(event));
+             logger.error( eventToString(event) );
       }
       else
       {

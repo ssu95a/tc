@@ -1,5 +1,6 @@
 package ru.inversion.tc.jdbc.trace;
 
+import ru.inversion.tc.jdbc.event.EventType;
 import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.event.JdbcEventListener;
@@ -12,18 +13,14 @@ import java.util.Map;
 
 
 /**
- * JDBC tracing hub.
- *
+ * <h5>JDBC tracing hub.</h5>
+ * <p>
  * Получает low-level JdbcEvent из JdbcEventBus,
  * преобразует их в JdbcTraceEvent и доставляет
  * JdbcTraceListener-ам.
- *
+ * <p>
  * Также позволяет публиковать trace-события,
  * которые не имеют JdbcEvent origin.
- *
- * Tracing является observation-only:
- * ошибка JdbcTraceListener не должна влиять
- * на JDBC operation и остальных listeners.
  */
 public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoCloseable
 {
@@ -40,6 +37,8 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
     * Включённые категории trace.
     */
    private final EnumSet<JdbcTraceType> enabledTypes = EnumSet.allOf(JdbcTraceType.class);
+
+   private final EnumSet<EventType> enabledJdbcEventTypes = EnumSet.allOf(EventType.class);
 
    private boolean closed;
 
@@ -72,8 +71,8 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
       if( event == null )
           return;
 
-      if( !isTraceEnabled( JdbcTraceType.JDBC ) )
-          return;
+      if(!isTraceEnabled( JdbcTraceType.JDBC ) )
+         return;
 
       fire( JdbcTraceEvent.jdbc(event) );
    }
@@ -82,14 +81,14 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
    /**
     * Публикация готового trace event.
     * <p>
-    * Используется, в том числе для событий, которые не имеют JdbcEvent origin.
+    * Используется, в том числе для событий, которые не имеют JdbcEvent.
     */
    public void trace( JdbcTraceEvent event )
    {
       if( event == null )
           return;
 
-      if( !isTraceEnabled( event.type() ) )
+      if( !isTraceEnabled( event ) )
          return;
 
       fire(event);
@@ -158,8 +157,7 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
 
 
    /**
-    * Включение/выключение отдельной
-    * trace category.
+    * Включение/выключение отдельной trace category.
     */
    public synchronized void setEnabled( JdbcTraceType type, boolean enabled )
    {
@@ -184,9 +182,6 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
    }
 
 
-   /**
-    * Общий + category-level switch.
-    */
    private boolean isTraceEnabled( JdbcTraceType type )
    {
       if( !enabled )
@@ -195,6 +190,43 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
       return isEnabled(type);
    }
 
+   /**
+    * Общий + category-level switch.
+    */
+   private boolean isTraceEnabled( JdbcTraceEvent event )
+   {
+      if( !enabled )
+         return false;
+
+      if( !isEnabled(event.type()) )
+         return false;
+
+      JdbcEvent jdbcEvent = event.jdbcEvent();
+
+      return jdbcEvent == null || isJdbcEventEnabled(jdbcEvent.type());
+   }
+
+
+   /** включение/выключение jdbc event */
+   public synchronized void setJdbcEventEnabled( EventType type, boolean enabled )
+   {
+      if( type == null )
+          return;
+
+      if( enabled )
+          enabledJdbcEventTypes.add(type);
+      else
+          enabledJdbcEventTypes.remove(type);
+   }
+
+
+   /** */
+   public synchronized boolean isJdbcEventEnabled( EventType type )
+   {
+      if( type == null )
+          return false;
+      return enabledJdbcEventTypes.contains(type);
+   }
 
    /**
     * Observation-only dispatch.
@@ -210,8 +242,7 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
       catch( Throwable ignored )
       {
          /*
-          * Ошибка listener manager также
-          * не должна влиять на JDBC/application logic.
+          * Ошибка listener не должна влиять на JDBC/application.
           *
           * TODO diagnostics/logging.
           */

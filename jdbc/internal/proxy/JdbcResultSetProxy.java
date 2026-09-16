@@ -229,14 +229,14 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
    synchronized void closedByStatement()
    {
       if( closed )
-         return;
+          return;
 
       lifecycleClosed();
    }
 
 
    /**
-    * Единственная точка завершения cursor lifecycle.
+    * Точка завершения cursor lifecycle.
     */
    private void lifecycleClosed()
    {
@@ -260,8 +260,7 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
 
 
    /**
-    * isClosed() синхронизирует lifecycle, если driver
-    * уже закрыл ResultSet не через наш proxy.
+    * isClosed() синхронизируется, если driver уже закрыл ResultSet где-то.
     */
    private synchronized boolean isClosed() throws SQLException
    {
@@ -286,7 +285,7 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
       catch( SQLException ignored )
       {
          /*
-          * Консервативно считаем ресурс ещё открытым.
+          * считаем открытым.
           */
          return false;
       }

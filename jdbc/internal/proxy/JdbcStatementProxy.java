@@ -713,43 +713,25 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
 
    /**
-    * Синхронизирует ResultSet, которые driver
-    * закрыл без вызова нашего ResultSetProxy.close().
+    * Синхронизирует ResultSet, которые driver закрыл без вызова нашего ResultSetProxy.close().
     */
    private void reconcileCursorResultSets()
    {
       if( cursorResultSets.isEmpty() )
-         return;
+          return;
 
-      ArrayList<JdbcResultSetProxy> snapshot =
-              new ArrayList<>(
-                      cursorResultSets.values()
-              );
+      ArrayList<JdbcResultSetProxy> snapshot = new ArrayList<>( cursorResultSets.values() );
 
       for( JdbcResultSetProxy resultSet : snapshot )
       {
          if( resultSet.isLifecycleClosed() )
          {
-            cursorResultSetClosed(
-                    resultSet
-            );
-
+            cursorResultSetClosed( resultSet );
             continue;
          }
 
-         if( isRawResultSetClosed(
-                 resultSet.raw()
-         ) )
+         if( isRawResultSetClosed( resultSet.raw() ) )
          {
-            /*
-             * closedByStatement() выполняет:
-             *
-             * unregister lifecycle
-             * release ResultSet ID slot
-             * owner callback
-             * RESULT_SET_CLOSE event
-             * Statement closed-state sync
-             */
             resultSet.closedByStatement();
          }
       }
@@ -769,10 +751,9 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       ArrayList<JdbcResultSetProxy> snapshot = new ArrayList<>( cursorResultSets.values() );
 
       /*
-       * Сначала очищаем owner cache.
-       *
-       * Callback из ResultSetProxy после этого
-       * становится безопасным no-op.
+       * Сначала очищаем cache.
+       * Callback из ResultSetProxy после этого становится безопасным no-op.
+       * тк cache пустой!
        */
       cursorResultSets.clear();
 
@@ -786,8 +767,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /**
     * Явный Statement.close().
     */
-   private void close()
-           throws Throwable
+   private void close() throws Throwable
    {
       if( closed )
          return;
@@ -805,22 +785,20 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
          reconcileCursorResultSets();
 
          /*
-          * Сам Statement также мог уже
-          * физически закрыться.
+          * Сам Statement также мог уже физически закрыться.
           */
          if( isRawStatementClosed() )
-            statementClosed();
+             statementClosed();
 
          throw throwable;
       }
 
-      statementClosed();
+      statementClosed( );
    }
 
 
    /**
-    * Единственная точка завершения
-    * Statement lifecycle нашего proxy.
+    * Точка завершения Statement lifecycle proxy.
     */
    private void statementClosed()
    {
@@ -866,17 +844,9 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
 
    /**
-    * Универсальная синхронизация фактического
-    * состояния raw Statement.
-    *
-    * Нам неважно, ПОЧЕМУ driver закрыл Statement:
-    *
-    * - closeOnCompletion()
-    * - Connection.close()
-    * - driver-specific behaviour
-    * - другая JDBC причина
-    *
-    * Proxy моделирует только факт закрытия.
+    * Синхронизация фактического состояния raw Statement.
+    * <p>
+    * Неважно, ПОЧЕМУ driver закрыл Statement, моделирует только факт закрытия.
     */
    void syncClosedState()
    {

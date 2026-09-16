@@ -49,8 +49,7 @@ public final class JdbcTransactionManager
           return false;
 
       /*
-       * Всё специфичное для конкретной СУБД —
-       * только внутри policy.
+       * Всё специфичное для конкретной СУБД — только внутри tran-policy.
        */
       if( !policy.canCommitIdleTransaction( connection ) )
       {
@@ -58,7 +57,7 @@ public final class JdbcTransactionManager
       }
 
       /*
-       * Повторная обязательная проверка перед commit.
+       * Повторная проверка перед commit.
        */
       if( lifecycle.hasOpenCursors() )
           return false;

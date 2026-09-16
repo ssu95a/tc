@@ -2,13 +2,11 @@ package ru.inversion.tc.jdbc.trace;
 
 
 /**
- * Listener tracing layer.
- *
+ * <h5>Слушатель Trace</h5>
+ * <p>
  * Не является listener-ом JDBC core.
- *
- * JdbcTracer получает low-level JdbcEvent,
- * преобразует его в JdbcTraceEvent
- * и отправляет JdbcTraceListener-ам.
+ * <p>
+ * JdbcTracer получает JdbcEvent, преобразует его в JdbcTraceEvent и отправляет JdbcTraceListener-ам.
  */
 @FunctionalInterface
 public interface JdbcTraceListener {

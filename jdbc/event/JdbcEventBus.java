@@ -119,10 +119,6 @@ public final class JdbcEventBus
       {
          man.fire( listener -> fireListenerSafely( listener, event ) );
       }
-      catch( ThreadDeath | VirtualMachineError fatal )
-      {
-         throw fatal;
-      }
       catch( Throwable ignored )
       {
          /*
@@ -148,12 +144,7 @@ public final class JdbcEventBus
       catch( Throwable ignored )
       {
          /*
-          * Observation-only.
-          *
-          * Один broken listener не мешает:
-          * - JDBC operation
-          * - остальным listeners
-          * - global JdbcEvent listener
+          * Один сломанный listener не мешает работать дальше:
           *
           * TODO diagnostics/logging.
           */

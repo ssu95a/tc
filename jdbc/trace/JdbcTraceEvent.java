@@ -11,7 +11,7 @@ import java.util.Map;
 
 
 /**
- * <h5>Событие tracing layer.</h5>
+ * <h5>Событие trace.</h5>
  * Может:
  * <ol>
  * <li>Оборачивать low-level JdbcEvent;
@@ -27,15 +27,12 @@ public final class JdbcTraceEvent extends EventObject
    private final JdbcEvent jdbcEvent;
 
    /*
-    * Категория tracing layer.
+    * Категория
     */
    private final JdbcTraceType type;
 
    /*
-    * Произвольный текст trace-события.
-    *
-    * Для JDBC событий обычно null:
-    * данные находятся в jdbcEvent.
+    * Текст trace-события.
     */
    private final String text;
 
@@ -48,7 +45,7 @@ public final class JdbcTraceEvent extends EventObject
    private final long timestampNanos;
 
    /*
-    * Дополнительные trace-level properties.
+    * Дополнительные trace properties.
     */
    private final Map<String, Object> properties;
 
@@ -123,7 +120,7 @@ public final class JdbcTraceEvent extends EventObject
 
 
    /**
-    * Получить дополнительное trace property.
+    * Получить event property.
     */
    @SuppressWarnings("unchecked")
    public <T> T property( String name )
@@ -135,7 +132,7 @@ public final class JdbcTraceEvent extends EventObject
 
 
    /**
-    * Wrap low-level JDBC event.
+    * Wrap on JDBC event.
     */
    public static JdbcTraceEvent jdbc( JdbcEvent event )
    {
@@ -144,7 +141,7 @@ public final class JdbcTraceEvent extends EventObject
 
 
    /**
-    * Wrap low-level JDBC event, properties ver
+    * Wrap on JDBC event, properties ver
     */
    public static JdbcTraceEvent jdbc( JdbcEvent event, Map<String, Object> properties )
    {
@@ -154,7 +151,7 @@ public final class JdbcTraceEvent extends EventObject
 
 
    /**
-    * Самостоятельное trace-событие, не имеющее JdbcEvent origin.
+    * Самостоятельное trace-событие, не имеющее JdbcEvent.
     */
    public static JdbcTraceEvent custom( Object source, JdbcTraceType type, String text )
    {
