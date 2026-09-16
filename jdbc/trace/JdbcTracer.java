@@ -69,14 +69,10 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
    public void onJdbcEvent( JdbcEvent event )
    {
       if( event == null )
-          return;
-
-      if(!isTraceEnabled( JdbcTraceType.JDBC ) )
          return;
 
-      fire( JdbcTraceEvent.jdbc(event) );
+      trace(JdbcTraceEvent.jdbc(event));
    }
-
 
    /**
     * Публикация готового trace event.
@@ -238,6 +234,10 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
    {
       try {
          listeners.fire( listener -> fireListener( listener, event ) );
+      }
+      catch( ThreadDeath | VirtualMachineError fatal )
+      {
+         throw fatal;
       }
       catch( Throwable ignored )
       {
