@@ -146,7 +146,23 @@ public final class JdbcTraceEvent extends EventObject
    public static JdbcTraceEvent jdbc( JdbcEvent event, Map<String, Object> properties )
    {
       Checks.Require.object( event,"event" );
-      return new JdbcTraceEvent( event.getSource(), event, JdbcTraceType.JDBC, null, properties );
+
+         JdbcTraceType type;
+
+         switch( event.type() ) {
+            case NOTICE:
+               type = JdbcTraceType.NOTICE;
+               break;
+            case DBMS_OUTPUT:
+               type = JdbcTraceType.DBMS_OUTPUT;
+               break;
+
+            default:
+               type = JdbcTraceType.JDBC;
+               break;
+         }
+
+         return new JdbcTraceEvent( event.getSource(), event, type, null, properties );
    }
 
 

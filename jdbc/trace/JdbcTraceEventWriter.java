@@ -2,6 +2,7 @@ package ru.inversion.tc.jdbc.trace;
 
 import ru.inversion.tc.jdbc.event.EventType;
 import ru.inversion.tc.jdbc.event.JdbcEvent;
+import ru.inversion.tc.jdbc.event.JdbcMessageEvent;
 import ru.inversion.tc.jdbc.event.JdbcStatementEvent;
 import ru.inversion.utils.S;
 
@@ -12,7 +13,6 @@ import java.io.Writer;
 import java.lang.reflect.Array;
 import java.sql.SQLException;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 
@@ -20,8 +20,7 @@ import java.util.concurrent.TimeUnit;
  * <h5>Текстовый вывод JdbcTraceEvent.</h5>
  * <p>
  * Класс отвечает только за форматирование.
- * Куда направляется вывод — Writer, log, System.out и т.п. —
- * решает вызывающий код.
+ * Куда направляется вывод — Writer, log, System.out и т.п. — решает вызывающий код.
  */
 public final class JdbcTraceEventWriter
 {
@@ -36,7 +35,6 @@ public final class JdbcTraceEventWriter
 
       if( writer == null )
           throw new IllegalArgumentException( "writer is null" );
-
       try
       {
          if( event.hasJdbcEvent() )
@@ -52,19 +50,70 @@ public final class JdbcTraceEventWriter
 
 
    /** */
-   private static void writeJdbcEvent( JdbcTraceEvent traceEvent, Writer writer ) throws IOException
+   private static void writeJdbcEvent(
+           JdbcTraceEvent traceEvent,
+           Writer writer
+   )
+           throws IOException
    {
-      final JdbcEvent jdbcEvent = traceEvent.jdbcEvent();
+      JdbcEvent jdbcEvent =
+              traceEvent.jdbcEvent();
 
-      if( jdbcEvent instanceof JdbcStatementEvent )
+      if( jdbcEvent instanceof JdbcMessageEvent )
       {
-         writeStatementEvent( traceEvent, (JdbcStatementEvent) jdbcEvent, writer );
+         writeMessageEvent(
+                 traceEvent,
+                 (JdbcMessageEvent) jdbcEvent,
+                 writer
+         );
+
          return;
       }
 
-      writeGenericJdbcEvent( traceEvent, jdbcEvent, writer );
+      if( jdbcEvent instanceof JdbcStatementEvent )
+      {
+         writeStatementEvent(
+                 traceEvent,
+                 (JdbcStatementEvent) jdbcEvent,
+                 writer
+         );
+
+         return;
+      }
+
+      writeGenericJdbcEvent(
+              traceEvent,
+              jdbcEvent,
+              writer
+      );
    }
 
+   private static void writeMessageEvent(
+           JdbcTraceEvent traceEvent,
+           JdbcMessageEvent event,
+           Writer writer
+   )
+           throws IOException
+   {
+      writer.append(
+              event.type().name()
+      );
+
+      writeSession(
+              traceEvent,
+              writer
+      );
+
+      writer.append(':');
+
+      if( !S.isNullOrEmpty(event.text()) )
+      {
+         writer.append(' ');
+         writer.append(event.text());
+      }
+
+      writer.append('\n');
+   }
 
    /** */
    private static void writeStatementEvent( JdbcTraceEvent traceEvent, JdbcStatementEvent event, Writer writer ) throws IOException
