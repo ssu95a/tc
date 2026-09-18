@@ -206,8 +206,13 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
        */
       if( "prepareStatement".equals(methodName) )
       {
+         JdbcSqlTraceInfo info =
+                 JdbcSqlTraceInfo.parse(sql(args));
+
+         args[0] = info.sql();
+
          PreparedStatement statement = (PreparedStatement) invokeRaw(method, args );
-         return wrapStatement( statement, sql(args) );
+         return wrapStatement( statement, info );
       }
 
       /*
@@ -215,8 +220,14 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
        */
       if( "prepareCall".equals(methodName) )
       {
+
+         JdbcSqlTraceInfo info =
+                 JdbcSqlTraceInfo.parse(sql(args));
+
+         args[0] = info.sql();
+
          CallableStatement statement = (CallableStatement) invokeRaw( method, args);
-         return wrapStatement( statement, sql(args) );
+         return wrapStatement( statement, info );
       }
 
       /*
@@ -303,7 +314,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
     *
     * То есть listener STATEMENT_OPEN уже видит полностью зарегистрированный Statement.
     */
-   private Statement wrapStatement( Statement statement, String sql ) throws Throwable
+   private Statement wrapStatement( Statement statement, JdbcSqlTraceInfo info ) throws Throwable
    {
       if( statement == null )
           return null;
@@ -322,7 +333,15 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
       try
       {
-         handler = JdbcStatementProxy.create( statement, this, sql, lifecycle, eventBus );
+
+         handler = JdbcStatementProxy.create(
+            statement,
+            this,
+            info != null ? info.sql() : null,
+            info != null ? info.hiddenParameters() : null,
+            lifecycle,
+            eventBus
+         );
 
          registerStatement( statement, handler );
 

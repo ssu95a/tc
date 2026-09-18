@@ -70,11 +70,14 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
    private boolean resultTransition;
 
+   private final Set<Integer> hiddenParameters;
+
    /** */
    private JdbcStatementProxy (
       Statement statement,
       JdbcConnectionProxy connection,
       String sql,
+      Set<Integer> hiddenParameters,
       JdbcLifecycleManager lifecycle,
       JdbcEventBus eventBus
    )
@@ -90,8 +93,10 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       this.connection= connection;
       this.sql       = sql;
 
-      prepared = statement instanceof PreparedStatement;
-      callable = statement instanceof CallableStatement;
+      this.prepared  = statement instanceof PreparedStatement;
+      this.callable  = statement instanceof CallableStatement;
+
+      this.hiddenParameters = hiddenParameters == null || hiddenParameters.isEmpty() ? Collections.emptySet() : Collections.unmodifiableSet( new TreeSet<>(hiddenParameters) );
    }
 
 
@@ -100,11 +105,12 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       Statement statement,
       JdbcConnectionProxy connection,
       String sql,
+      Set<Integer> hiddenParameters,
       JdbcLifecycleManager lifecycle,
       JdbcEventBus eventBus
    )
    {
-      JdbcStatementProxy handler = new JdbcStatementProxy( statement, connection, sql, lifecycle, eventBus );
+      JdbcStatementProxy handler = new JdbcStatementProxy( statement, connection, sql, hiddenParameters, lifecycle, eventBus );
 
       Class<?> jdbcInterface;
 

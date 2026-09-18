@@ -274,8 +274,6 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
 
    /**
     * Отписка от JDBC event layer.
-    *
-    * Повторный close безопасен.
     */
    @Override
    public synchronized void close()
