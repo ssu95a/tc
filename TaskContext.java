@@ -62,7 +62,7 @@ public class TaskContext implements AutoCloseable {
             final JdbcEventBus eventBus = new JdbcEventBus();
 
             jdbcTracer = new JdbcTracer(eventBus);
-            connection = JdbcConnectionProxy.create(c, eventBus) .proxy();
+            connection = JdbcConnectionProxy.create(c, eventBus, jdbcTracer::isJdbcEventTraceEnabled) .proxy();
 
             traceConnectionInfo(c);
 

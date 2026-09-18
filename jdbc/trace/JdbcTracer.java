@@ -284,4 +284,26 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
       closed = true;
       eventBus.removeListener( JdbcEvent.class, this );
    }
+
+   /** */
+   public boolean isJdbcEventTraceEnabled( EventType type )
+   {
+      if( !enabled )
+         return false;
+
+      if( !isJdbcEventEnabled(type) )
+         return false;
+
+      switch( type )
+      {
+         case NOTICE:
+            return isEnabled(JdbcTraceType.NOTICE);
+
+         case DBMS_OUTPUT:
+            return isEnabled(JdbcTraceType.DBMS_OUTPUT);
+
+         default:
+            return isEnabled(JdbcTraceType.JDBC);
+      }
+   }
 }

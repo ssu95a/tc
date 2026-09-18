@@ -7,6 +7,7 @@ import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupport;
 import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupportFactory;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
+import ru.inversion.tc.jdbc.internal.trace.JdbcServerOutputTracer;
 import ru.inversion.tc.jdbc.internal.transaction.JdbcSavepointManager;
 import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionManager;
 
@@ -24,6 +25,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 import java.util.*;
+import java.util.function.Predicate;
 
 
 /**
@@ -64,8 +66,10 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    //
    private final JdbcSavepointManager savepoints = new JdbcSavepointManager();
 
+   private final JdbcServerOutputTracer serverOutputTracer;
+
    /** */
-   private JdbcConnectionProxy( Connection connection, JdbcEventBus eventBus )
+   private JdbcConnectionProxy( Connection connection, JdbcEventBus eventBus, Predicate<EventType> traceEnabled )
    {
       super( new JdbcLifecycleManager(), eventBus );
 
@@ -83,6 +87,14 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
         savepoints,
         support.transactionPolicy() // политика работы с транзакцией
       );
+
+
+      serverOutputTracer =
+              support.createServerOutputTracer(
+                      connection,
+                      eventBus,
+                      traceEnabled
+              );
    }
 
    /** */
@@ -107,9 +119,9 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Создаёт handler + JDBC Connection proxy.
     */
-   public static JdbcConnectionProxy create( Connection connection, JdbcEventBus eventBus )
+   public static JdbcConnectionProxy create( Connection connection, JdbcEventBus eventBus, Predicate<EventType> traceEnabled )
    {
-      JdbcConnectionProxy handler = new JdbcConnectionProxy( connection, eventBus );
+      JdbcConnectionProxy handler = new JdbcConnectionProxy( connection, eventBus, traceEnabled );
 
       handler.proxy =
               (Connection) Proxy.newProxyInstance(
@@ -655,6 +667,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       }
    }
 
+
    /**
     * Явный Connection.close().
     */
@@ -665,17 +678,17 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
       try
       {
+         if( serverOutputTracer != null )
+             serverOutputTracer.close();
+
          connection.close();
       }
       catch( Throwable throwable )
       {
-         /*
-          * Даже failed close мог закрыть Statement/RS.
-          */
          syncStatements();
 
          if( isRawConnectionClosed() )
-            connectionClosed();
+             connectionClosed();
 
          throw throwable;
       }
@@ -686,7 +699,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
    /**
     * Connection.abort(Executor).
-    *
+    * <p>
     * Успешный abort означает physical close.
     */
    private Object abort(

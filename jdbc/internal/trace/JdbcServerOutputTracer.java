@@ -1,10 +1,7 @@
-package ru.inversion.tc.jdbc.trace;
+package ru.inversion.tc.jdbc.internal.trace;
 
 import ru.inversion.tc.dbms_output.IDBMSOutput;
-import ru.inversion.tc.jdbc.event.EventType;
-import ru.inversion.tc.jdbc.event.JdbcEventBus;
-import ru.inversion.tc.jdbc.event.JdbcEventListener;
-import ru.inversion.tc.jdbc.event.JdbcStatementEvent;
+import ru.inversion.tc.jdbc.event.*;
 import ru.inversion.utils.Checks;
 
 import java.sql.CallableStatement;
@@ -13,6 +10,7 @@ import java.sql.SQLWarning;
 import java.sql.Statement;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 
 /**
@@ -29,8 +27,6 @@ import java.util.function.Consumer;
 public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcStatementEvent>, AutoCloseable
 {
    private final JdbcEventBus eventBus;
-
-   private final JdbcTracer tracer;
 
    /*
     * Oracle DBMS_OUTPUT или PostgreSQL dbms_output extension.
@@ -54,23 +50,29 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
 
    private boolean closed;
 
+   private final Predicate<EventType> enabled;
 
    /** */
    public JdbcServerOutputTracer(
       JdbcEventBus eventBus,
-      JdbcTracer tracer,
       IDBMSOutput dbmsOutput,
+      Predicate<EventType> enabled,
       Consumer<Boolean> raiseNoticeState
    )
    {
       this.eventBus   = Checks.Require.object( eventBus, "eventBus" );
-      this.tracer     = Checks.Require.object( tracer, "tracer" );
       this.dbmsOutput = Checks.Require.object( dbmsOutput, "dbmsOutput" );
+      this.enabled    = Checks.Require.object( enabled, "enabled" );
       this.raiseNoticeState = raiseNoticeState;
 
       eventBus.addListener( JdbcStatementEvent.class, this );
    }
 
+   /** */
+   private boolean isEnabled( EventType type )
+   {
+      return enabled != null && enabled.test(type);
+   }
 
    /** */
    @Override
@@ -109,48 +111,38 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
    {
       /*
        * PostgreSQL RAISE DEBUG / NOTICE.
-       *
-       * Наличие callback означает, что DB-specific
-       * реализация этой возможности существует.
+       * Состояние должно быть установлено до execute().
        */
       syncRaiseNoticeState();
 
       /*
-       * DBMS_OUTPUT имеет смысл для вызова
-       * хранимого кода.
+       * DBMS_OUTPUT нужен только для CallableStatement.
        */
       if( !(event.getSource() instanceof CallableStatement) )
          return;
 
-      if( !isTraceEnabled(JdbcTraceType.DBMS_OUTPUT) )
+      if( !isEnabled(EventType.DBMS_OUTPUT) )
          return;
 
       if( !dbmsOutput.isEnable() )
          dbmsOutput.enable();
    }
 
-
    /**
     * Выполняется как после успешного execute,
     * так и после ERROR.
     */
-   private void afterExecute(
-           JdbcStatementEvent event
-   )
+   private void afterExecute( JdbcStatementEvent event )
    {
       /*
-       * PostgreSQL server messages.
-       *
-       * Для Oracle raiseNoticeState == null,
-       * поэтому SQLWarning здесь не используется
-       * как механизм RAISE DEBUG.
+       * SQLWarning chain используется только там,
+       * где есть raiseNoticeState, т.е. PostgreSQL.
        */
       if( raiseNoticeState != null )
          traceWarnings(event);
 
       /*
-       * Старый контракт:
-       * DBMS_OUTPUT связан с CallableStatement.
+       * DBMS_OUTPUT читаем только после CallableStatement.
        */
       if( event.getSource() instanceof CallableStatement )
          traceDbmsOutput(event);
@@ -165,7 +157,7 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
            JdbcStatementEvent event
    )
    {
-      if( !isTraceEnabled(JdbcTraceType.NOTICE) )
+      if( !isEnabled(EventType.NOTICE) )
          return;
 
       Object source =
@@ -202,18 +194,19 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
 
          if( text != null )
          {
-            tracer.trace(
-                    source,
-                    JdbcTraceType.NOTICE,
-                    text.toString()
+            eventBus.fireSafely(
+                    JdbcMessageEvent.notice(
+                            source,
+                            text.toString()
+                    )
             );
          }
       }
       catch( SQLException ignored )
       {
          /*
-          * Server diagnostics не должны
-          * влиять на JDBC/application.
+          * Diagnostics не должны влиять
+          * на application JDBC.
           */
       }
    }
@@ -227,7 +220,7 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
            JdbcStatementEvent event
    )
    {
-      if( !isTraceEnabled(JdbcTraceType.DBMS_OUTPUT) )
+      if( !isEnabled(EventType.DBMS_OUTPUT) )
          return;
 
       String text =
@@ -236,13 +229,13 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
       if( text == null || text.isEmpty() )
          return;
 
-      tracer.trace(
-              event.getSource(),
-              JdbcTraceType.DBMS_OUTPUT,
-              text
+      eventBus.fireSafely(
+              JdbcMessageEvent.dbmsOutput(
+                      event.getSource(),
+                      text
+              )
       );
    }
-
 
    /**
     * Синхронизирует состояние server-side
@@ -253,8 +246,7 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
       if( raiseNoticeState == null )
          return;
 
-      boolean enable =
-              isTraceEnabled(JdbcTraceType.NOTICE);
+      boolean enable = isEnabled(EventType.NOTICE);
 
       if( enable == raiseNoticeEnabled )
          return;
@@ -266,16 +258,6 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
        * после успешного DB-specific callback.
        */
       raiseNoticeEnabled = enable;
-   }
-
-
-   /** */
-   private boolean isTraceEnabled(
-           JdbcTraceType type
-   )
-   {
-      return tracer.isEnabled()
-              && tracer.isEnabled(type);
    }
 
 
