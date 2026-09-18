@@ -5,7 +5,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /** */
-public class JdbcSqlTraceInfo {
+final class JdbcSqlTraceInfo {
    private static final String HIDE_MARKER = "\n--lhv:";
 
    private final String sql;
@@ -48,11 +48,11 @@ public class JdbcSqlTraceInfo {
       return new JdbcSqlTraceInfo( sql.substring(0, pos), hidden );
    }
 
-   public String sql() {
+   String sql() {
       return sql;
    }
 
-   public Set<Integer> hiddenParameters() {
+   Set<Integer> hiddenParameters() {
       return hiddenParameters;
    }
 

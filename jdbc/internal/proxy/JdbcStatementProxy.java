@@ -30,6 +30,9 @@ import java.util.TreeSet;
  */
 public final class JdbcStatementProxy extends JdbcObjectProxy
 {
+
+   final static private String HIDDEN_VALUE = "***";
+
    private final Statement statement;
 
    /*
@@ -560,30 +563,21 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        * Если setXXX выбросил SQLException,
        * наш parameter state не меняется.
        */
-      Object value =
-              invokeRaw(
-                      method,
-                      args
-              );
+      Object value = invokeRaw( method, args );
 
-      int index =
-              (Integer) args[0];
+      int index = (Integer) args[0];
 
       if( "setNull".equals(method.getName()) )
       {
-         inParameters.put(
-                 index,
-                 null
-         );
+         inParameters.put( index, null );
+      }
+      else if( hiddenParameters.contains(index) )
+      {
+         inParameters.put(index, HIDDEN_VALUE);
       }
       else
       {
-         inParameters.put(
-                 index,
-                 args.length > 1
-                         ? args[1]
-                         : null
-         );
+         inParameters.put( index, args.length > 1 ? args[1] : null );
       }
 
       return value;
@@ -935,6 +929,12 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
       for( Integer index : outParameters )
       {
+         if( hiddenParameters.contains(index) )
+         {
+            result.put(index, HIDDEN_VALUE);
+            continue;
+         }
+
          try
          {
             result.put( index, callableStatement.getObject(index) );
@@ -942,8 +942,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
          catch( SQLException ignored )
          {
             /*
-             * Diagnostics не должны ломать
-             * успешный execute.
+             * Diagnostics не должны ломать успешный execute.
              */
          }
       }
