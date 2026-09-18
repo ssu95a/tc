@@ -702,33 +702,25 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
     * <p>
     * Успешный abort означает physical close.
     */
-   private Object abort(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object abort( Method method, Object[] args ) throws Throwable
    {
       if( closed )
-         return null;
+          return null;
 
-      try
-      {
-         Object value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
+      try {
+
+         Object value = invokeRaw( method, args );
 
          connectionClosed();
 
          return value;
       }
-      catch( Throwable throwable )
-      {
+      catch( Throwable throwable ) {
+
          syncStatements();
 
          if( isRawConnectionClosed() )
-            connectionClosed();
+             connectionClosed();
 
          throw throwable;
       }
@@ -745,24 +737,26 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       synchronized( this )
       {
          if( closed )
-             return;
+            return;
 
          closed = true;
 
-         snapshot = new ArrayList<>( statements.values() );
+         snapshot =
+                 new ArrayList<>(
+                         statements.values()
+                 );
 
-         /*
-          * Чистим свой registry первым.
-          */
          statements.clear();
       }
 
       /*
-       * Сам JDBC Connection уже закрыт.
+       * Может быть abort / driver-side physical close.
        *
-       * Statement.close() повторно НЕ вызываем.
-       * Только синхронизируем наши lifecycle states.
+       * SQL здесь уже выполнять нельзя.
        */
+      if( serverOutputTracer != null )
+          serverOutputTracer.closedByConnection();
+
       for( JdbcStatementProxy statement : snapshot )
       {
          statement.closedByConnection();
@@ -770,13 +764,6 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
       savepoints.onTransactionCompleted();
 
-      /*
-       * Порядок событий:
-       *
-       * RESULT_SET_CLOSE
-       * STATEMENT_CLOSE
-       * CONNECTION_CLOSE
-       */
       fireConnectionClose();
    }
 

@@ -265,25 +265,39 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
    @Override
    public synchronized void close()
    {
+      close(true);
+   }
+
+
+   /**
+    * Connection уже физически закрыт/abort.
+    *
+    * Никаких SQL cleanup операций.
+    */
+   public synchronized void closedByConnection()
+   {
+      close(false);
+   }
+
+
+   private void close( boolean cleanupServerState )
+   {
       if( closed )
          return;
 
       closed = true;
 
-      /*
-       * Сначала перестаём получать JDBC events.
-       */
       eventBus.removeListener(
               JdbcStatementEvent.class,
               this
       );
 
-      Throwable failure =
-              null;
+      if( !cleanupServerState )
+         return;
 
       /*
-       * Выключаем PostgreSQL RAISE output,
-       * если включали его.
+       * Observation cleanup не должен мешать
+       * закрытию JDBC connection.
        */
       if( raiseNoticeState != null
               && raiseNoticeEnabled )
@@ -292,9 +306,12 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
          {
             raiseNoticeState.accept(false);
          }
-         catch( Throwable ex )
+         catch( ThreadDeath | VirtualMachineError fatal )
          {
-            failure = ex;
+            throw fatal;
+         }
+         catch( Throwable ignored )
+         {
          }
          finally
          {
@@ -302,36 +319,16 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
          }
       }
 
-      /*
-       * disable DBMS_OUTPUT.
-       *
-       * IDBMSOutput внутри использует raw Connection,
-       * переданный ему при создании.
-       */
       try
       {
          dbmsOutput.close();
       }
-      catch( Throwable ex )
+      catch( ThreadDeath | VirtualMachineError fatal )
       {
-         if( failure == null )
-            failure = ex;
-         else
-            failure.addSuppressed(ex);
+         throw fatal;
       }
-
-      if( failure != null )
+      catch( Throwable ignored )
       {
-         if( failure instanceof ThreadDeath )
-            throw (ThreadDeath) failure;
-
-         if( failure instanceof VirtualMachineError )
-            throw (VirtualMachineError) failure;
-
-         if( failure instanceof RuntimeException )
-            throw (RuntimeException) failure;
-
-         throw new RuntimeException(failure);
       }
    }
 }
