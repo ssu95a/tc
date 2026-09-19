@@ -30,10 +30,12 @@ public final class JdbcStatementEvent extends JdbcEvent
 
       long durationNanos,
 
-      Throwable throwable
+      Throwable throwable,
+
+      boolean traceIgnored
    )
    {
-      super( source, type, phase, throwable );
+      super( source, type, phase, throwable, traceIgnored );
 
       this.methodName    = methodName;
       this.sql           = sql;
@@ -73,7 +75,7 @@ public final class JdbcStatementEvent extends JdbcEvent
 
 
    /** */
-   public static JdbcStatementEvent open( Object source, String sql )
+   public static JdbcStatementEvent open( Object source, String sql, boolean traceIgnored )
    {
       return new JdbcStatementEvent(
               source,
@@ -88,14 +90,15 @@ public final class JdbcStatementEvent extends JdbcEvent
               null,
 
               0L,
-              null
+              null,
+              traceIgnored
       );
    }
 
 
    /** */
    public static JdbcStatementEvent beforeExecute(
-      Object source, String methodName, String sql, Map<Integer, Object> inParameters
+      Object source, String methodName, String sql, Map<Integer, Object> inParameters, boolean traceIgnored
    )
    {
       return new JdbcStatementEvent(
@@ -111,7 +114,9 @@ public final class JdbcStatementEvent extends JdbcEvent
               null,
 
               0L,
-              null
+              null,
+
+              traceIgnored
       );
    }
 
@@ -123,7 +128,8 @@ public final class JdbcStatementEvent extends JdbcEvent
       String sql,
       Map<Integer, Object> inParameters,
       Map<Integer, Object> outParameters,
-      long durationNanos
+      long durationNanos,
+      boolean traceIgnored
    )
    {
       return new JdbcStatementEvent(
@@ -139,7 +145,8 @@ public final class JdbcStatementEvent extends JdbcEvent
               outParameters,
 
               durationNanos,
-              null
+              null,
+              traceIgnored
       );
    }
 
@@ -167,13 +174,15 @@ public final class JdbcStatementEvent extends JdbcEvent
               null,
 
               durationNanos,
-              throwable
+              throwable,
+
+              false
       );
    }
 
 
    /** */
-   public static JdbcStatementEvent close( Object source, String sql )
+   public static JdbcStatementEvent close( Object source, String sql, boolean traceIgnored )
    {
       return new JdbcStatementEvent(
               source,
@@ -188,7 +197,8 @@ public final class JdbcStatementEvent extends JdbcEvent
               null,
 
               0L,
-              null
+              null,
+              traceIgnored
       );
    }
 

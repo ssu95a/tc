@@ -71,6 +71,9 @@ public final class JdbcTracer implements JdbcEventListener<JdbcEvent>, AutoClose
       if( event == null )
          return;
 
+      if( event.isTraceIgnored() )
+         return;
+
       trace(JdbcTraceEvent.jdbc(event));
    }
 

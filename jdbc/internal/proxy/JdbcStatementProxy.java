@@ -50,6 +50,8 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    private final boolean prepared;
    private final boolean callable;
 
+   private final boolean traceIgnored;
+
    private boolean closingResultSets;
 
    /*
@@ -82,7 +84,8 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       String sql,
       Set<Integer> hiddenParameters,
       JdbcLifecycleManager lifecycle,
-      JdbcEventBus eventBus
+      JdbcEventBus eventBus,
+      boolean traceIgnored
    )
    {
       super( lifecycle, eventBus );
@@ -100,6 +103,9 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       this.callable  = statement instanceof CallableStatement;
 
       this.hiddenParameters = hiddenParameters == null || hiddenParameters.isEmpty() ? Collections.emptySet() : Collections.unmodifiableSet( new TreeSet<>(hiddenParameters) );
+
+      this.traceIgnored = traceIgnored;
+
    }
 
 
@@ -109,11 +115,12 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       JdbcConnectionProxy connection,
       String sql,
       Set<Integer> hiddenParameters,
+      boolean traceIgnored,
       JdbcLifecycleManager lifecycle,
       JdbcEventBus eventBus
    )
    {
-      JdbcStatementProxy handler = new JdbcStatementProxy( statement, connection, sql, hiddenParameters, lifecycle, eventBus );
+      JdbcStatementProxy handler = new JdbcStatementProxy( statement, connection, sql, hiddenParameters, lifecycle, eventBus, traceIgnored );
 
       Class<?> jdbcInterface;
 
@@ -975,7 +982,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       if( !hasStatementListeners() )
          return;
 
-      eventBus.fireSafely( JdbcStatementEvent.open( proxy, sql ) );
+      eventBus.fire( JdbcStatementEvent.open( proxy, sql, traceIgnored ) );
    }
 
 
@@ -985,7 +992,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       if( !hasStatementListeners() )
          return;
 
-      eventBus.fireSafely( JdbcStatementEvent.beforeExecute( proxy, methodName, sql, inParameters ));
+      eventBus.fire( JdbcStatementEvent.beforeExecute( proxy, methodName, sql, inParameters, traceIgnored ));
    }
 
 
@@ -997,7 +1004,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
       Map<Integer, Object> out = outParameterValues();
 
-      eventBus.fireSafely( JdbcStatementEvent.afterExecute( proxy, methodName, sql, inParameters, out, durationNanos ) );
+      eventBus.fire( JdbcStatementEvent.afterExecute( proxy, methodName, sql, inParameters, out, durationNanos, traceIgnored ) );
    }
 
 
@@ -1011,7 +1018,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    {
       if( !hasStatementListeners() )
          return;
-      eventBus.fireSafely( JdbcStatementEvent.executeError( proxy, methodName, sql, inParameters, durationNanos, throwable ) );
+      eventBus.fire( JdbcStatementEvent.executeError( proxy, methodName, sql, inParameters, durationNanos, throwable ) );
    }
 
 
@@ -1021,7 +1028,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       if( !hasStatementListeners() )
           return;
 
-      eventBus.fireSafely( JdbcStatementEvent.close( proxy, sql ) );
+      eventBus.fire( JdbcStatementEvent.close( proxy, sql, traceIgnored ) );
    }
 
 

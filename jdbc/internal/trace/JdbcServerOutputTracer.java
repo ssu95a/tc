@@ -168,8 +168,11 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
             warning = warning.getNextWarning();
          }
 
+         if( event.isTraceIgnored() )
+            return;
+
          if( text != null )
-             eventBus.fireSafely( JdbcMessageEvent.notice( source, text.toString() ) );
+             eventBus.fire( JdbcMessageEvent.notice( source, text.toString() ) );
       }
       catch( SQLException ignored ) {
          /* Diagnostics не должны влиять на application JDBC. */
@@ -180,20 +183,31 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
    /**
     * Oracle DBMS_OUTPUT / PostgreSQL dbms_output extension.
     */
-   private void traceDbmsOutput( JdbcStatementEvent event )
+   private void traceDbmsOutput(
+           JdbcStatementEvent event
+   )
    {
       if( !isEnabled(EventType.DBMS_OUTPUT) )
-          return;
+         return;
 
       if( !dbmsOutput.isEnabled() )
-          return;
+         return;
 
-      String text = dbmsOutput.read();
+      String text =
+              dbmsOutput.read(); // читаем ВСЕГДА
+
+      if( event.isTraceIgnored() )
+         return;               // но наружу не отдаём
 
       if( S.isNullOrEmpty(text) )
-          return;
+         return;
 
-      eventBus.fireSafely( JdbcMessageEvent.dbmsOutput( event.getSource(), text ) );
+      eventBus.fire(
+              JdbcMessageEvent.dbmsOutput(
+                      event.getSource(),
+                      text
+              )
+      );
    }
 
    /**

@@ -902,7 +902,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          return;
       }
 
-      eventBus.fireSafely( new JdbcEvent( proxy, type, phase, throwable ) );
+      eventBus.fire( new JdbcEvent( proxy, type, phase, throwable ) );
    }
 
 
