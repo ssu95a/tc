@@ -9,23 +9,19 @@ import java.util.concurrent.ConcurrentHashMap;
 /** */
 public final class JdbcEventBus
 {
-   /** Слушатели разных типов событий, в зависимости от типа - тип, класс события */
-   private final Map< Class<? extends JdbcEvent>, IListenerManConsumer<JdbcEventListener<?>>>
-      listenerMap = new ConcurrentHashMap<>();
+   private final Map<Class<? extends JdbcEvent>, IListenerManConsumer<JdbcEventListener<?>>> listenerMap = new ConcurrentHashMap<>();
 
-   /** */
    public synchronized <E extends JdbcEvent> void addListener( Class<E> eventClass, JdbcEventListener<? super E> listener )
    {
       if( eventClass == null || listener == null )
           return;
 
-      IListenerManConsumer<JdbcEventListener<?>> man =
-              listenerMap.computeIfAbsent( eventClass, (k)->ListenerManFactory.createListenerManConsumer() );
+      IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.computeIfAbsent( eventClass,k -> ListenerManFactory.createListenerManConsumer() );
 
       man.addListener(listener);
    }
 
-   /** */
+
    public synchronized <E extends JdbcEvent> void removeListener( Class<E> eventClass, JdbcEventListener<? super E> listener )
    {
       if( eventClass == null || listener == null )
@@ -43,44 +39,9 @@ public final class JdbcEventBus
    }
 
 
-   /** */
    public boolean isEmpty()
    {
       return listenerMap.isEmpty();
-   }
-
-   /** */
-   public <E extends JdbcEvent> void fire( E event )
-   {
-      if( event == null )
-          return;
-
-      fireForClass( event, event.getClass());
-
-      /*
-       * Событие JdbcEvent.class получает все слушатели.
-       */
-      if( event.getClass() != JdbcEvent.class )
-          fireForClass( event, JdbcEvent.class);
-   }
-
-
-   /** */
-   private void fireForClass( JdbcEvent event, Class<? extends JdbcEvent> eventClass )
-   {
-      IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.get(eventClass);
-      if( man == null )
-          return;
-
-      fire(man, event);
-   }
-
-
-   /** */
-   @SuppressWarnings({ "rawtypes", "unchecked" })
-   private static void fire( IListenerManConsumer<JdbcEventListener<?>> man, JdbcEvent event )
-   {
-      man.fire( listener -> ((JdbcEventListener) listener).onJdbcEvent(event));
    }
 
 
@@ -91,47 +52,54 @@ public final class JdbcEventBus
    }
 
 
-   /** */
-   public <E extends JdbcEvent> void fireSafely( E event )
+   /**
+    * Observation-only dispatch.
+    *
+    * Ошибка listener-а не должна влиять
+    * на JDBC/application.
+    */
+   public <E extends JdbcEvent> void fire( E event )
    {
       if( event == null )
           return;
 
-      fireForClassSafely( event, event.getClass() );
+      fireForClass( event, event.getClass() );
 
+      /*
+       * JdbcEvent.class получает все события.
+       */
       if( event.getClass() != JdbcEvent.class )
-          fireForClassSafely( event, JdbcEvent.class );
+          fireForClass( event, JdbcEvent.class );
    }
 
 
-   /**
-    * Падение одного слушателя не останавливает обработку события.
-    * Кроме совсем уж плохих ситуаций!
-    */
-   private void fireForClassSafely( JdbcEvent event, Class<? extends JdbcEvent> eventClass )
+   /** */
+   private void fireForClass( JdbcEvent event, Class<? extends JdbcEvent> eventClass )
    {
       IListenerManConsumer<JdbcEventListener<?>> man = listenerMap.get(eventClass);
 
       if( man == null )
           return;
 
-      try
-      {
-         man.fire( listener -> fireListenerSafely( listener, event ) );
+      try {
+         man.fire( listener -> fireListener( listener, event ) );
+      }
+      catch( ThreadDeath | VirtualMachineError fatal ) {
+         throw fatal;
       }
       catch( Throwable ignored )
       {
          /*
-          * Ошибка самого listener manager.
+          * Ошибка listener manager не должна влиять на JDBC/application.
           *
-          * TODO logging.
+          * TODO diagnostics/logging.
           */
       }
    }
 
 
    @SuppressWarnings({ "rawtypes", "unchecked" })
-   private static <E extends JdbcEvent> void fireListenerSafely( JdbcEventListener<?> listener, E event )
+   private static void fireListener( JdbcEventListener<?> listener, JdbcEvent event )
    {
       try
       {
@@ -141,10 +109,10 @@ public final class JdbcEventBus
       {
          throw fatal;
       }
-      catch( Throwable ignored )
-      {
+      catch( Throwable ignored ) {
          /*
-          * Один сломанный listener не мешает работать дальше:
+          * Один broken listener
+          * не мешает остальным.
           *
           * TODO diagnostics/logging.
           */

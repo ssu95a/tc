@@ -2,13 +2,11 @@ package ru.inversion.tc.tracer.impl;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import ru.inversion.tc.dbms_output.IDBMSOutput;
 import ru.inversion.tc.tracer.IQueryDBTracer;
 import ru.inversion.tc.tracer.QueryDBTraceEvent;
 import ru.inversion.tc.tracer.QueryDBTraceTypeEnum;
 import ru.inversion.utils.S;
 import ru.inversion.utils.Tags;
-import ru.inversion.utils.U;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;

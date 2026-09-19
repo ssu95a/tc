@@ -13,10 +13,12 @@ public enum JdbcTraceType
 {
    /**
     * Событие пришло из JDBC event layer.
-    *
+    * <p>
     * Детали находятся в JdbcTraceEvent.jdbcEvent().
     */
    JDBC,
+
+   ERROR,
 
    /** Информационное trace-событие. */
    INFO,

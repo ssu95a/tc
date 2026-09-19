@@ -1,6 +1,5 @@
 package ru.inversion.tc.jdbc.internal.db.oracle;
 
-import ru.inversion.tc.dbms_output.DBMSOutputImpl;
 import ru.inversion.tc.jdbc.event.EventType;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupport;
@@ -24,6 +23,6 @@ public final class OracleDatabaseSupport implements JdbcDatabaseSupport
    @Override
    public JdbcServerOutputTracer createServerOutputTracer( Connection connection, JdbcEventBus eventBus, Predicate<EventType> enabled )
    {
-      return new JdbcServerOutputTracer( eventBus, new DBMSOutputImpl(connection), enabled, null );
+      return new JdbcServerOutputTracer( eventBus, new OracleDbmsOutput(connection), enabled, null );
    }
 }

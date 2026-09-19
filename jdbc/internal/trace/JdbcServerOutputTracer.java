@@ -1,14 +1,12 @@
 package ru.inversion.tc.jdbc.internal.trace;
 
-import ru.inversion.tc.dbms_output.IDBMSOutput;
 import ru.inversion.tc.jdbc.event.*;
 import ru.inversion.utils.Checks;
+import ru.inversion.utils.S;
 
-import java.sql.CallableStatement;
 import java.sql.SQLException;
 import java.sql.SQLWarning;
 import java.sql.Statement;
-import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -31,8 +29,7 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
    /*
     * Oracle DBMS_OUTPUT или PostgreSQL dbms_output extension.
     */
-   private final IDBMSOutput dbmsOutput;
-
+   private final JdbcDbmsOutput dbmsOutput;
    /*
     * PostgreSQL-specific callback:
     *
@@ -50,12 +47,13 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
 
    private boolean closed;
 
+   /** */
    private final Predicate<EventType> enabled;
 
    /** */
    public JdbcServerOutputTracer(
       JdbcEventBus eventBus,
-      IDBMSOutput dbmsOutput,
+      JdbcDbmsOutput dbmsOutput,
       Predicate<EventType> enabled,
       Consumer<Boolean> raiseNoticeState
    )
@@ -63,6 +61,7 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
       this.eventBus   = Checks.Require.object( eventBus, "eventBus" );
       this.dbmsOutput = Checks.Require.object( dbmsOutput, "dbmsOutput" );
       this.enabled    = Checks.Require.object( enabled, "enabled" );
+
       this.raiseNoticeState = raiseNoticeState;
 
       eventBus.addListener( JdbcStatementEvent.class, this );
@@ -76,27 +75,23 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
 
    /** */
    @Override
-   public void onJdbcEvent(
-           JdbcStatementEvent event
-   )
+   public void onJdbcEvent( JdbcStatementEvent event )
    {
       if( closed || event == null )
-         return;
+          return;
 
       if( event.type() != EventType.STATEMENT_EXECUTE )
-         return;
+          return;
 
       switch( event.phase() )
       {
          case BEFORE:
             beforeExecute(event);
             break;
-
          case AFTER:
          case ERROR:
             afterExecute(event);
             break;
-
          default:
             break;
       }
@@ -104,137 +99,101 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
 
 
    /**
-    * Настройка server output должна происходить
-    * до выполнения пользовательского SQL.
+    * Настройка server output должна происходить до выполнения пользовательского SQL.
     */
    private void beforeExecute( JdbcStatementEvent event )
    {
-      /*
-       * PostgreSQL RAISE DEBUG / NOTICE.
-       * Состояние должно быть установлено до execute().
-       */
       syncRaiseNoticeState();
+      syncDbmsOutputState();
+   }
 
-      /*
-       * DBMS_OUTPUT нужен только для CallableStatement.
-       */
-      if( !(event.getSource() instanceof CallableStatement) )
-         return;
 
-      if( !isEnabled(EventType.DBMS_OUTPUT) )
-         return;
+   /** */
+   private void syncDbmsOutputState()
+   {
+      boolean enable = isEnabled(EventType.DBMS_OUTPUT);
 
-      if( !dbmsOutput.isEnable() )
-         dbmsOutput.enable();
+      if( enable == dbmsOutput.isEnabled() )
+          return;
+
+      if( enable )
+          dbmsOutput.enable();
+      else
+          dbmsOutput.disable();
    }
 
    /**
-    * Выполняется как после успешного execute,
-    * так и после ERROR.
+    * Выполняется как после успешного execute, так и после ERROR.
     */
    private void afterExecute( JdbcStatementEvent event )
    {
-      /*
-       * SQLWarning chain используется только там,
-       * где есть raiseNoticeState, т.е. PostgreSQL.
-       */
       if( raiseNoticeState != null )
-         traceWarnings(event);
+          traceWarnings(event);
 
-      /*
-       * DBMS_OUTPUT читаем только после CallableStatement.
-       */
-      if( event.getSource() instanceof CallableStatement )
-         traceDbmsOutput(event);
+      traceDbmsOutput(event);
    }
 
 
    /**
-    * PostgreSQL RAISE DEBUG / NOTICE,
-    * пришедшие через JDBC SQLWarning chain.
+    * PostgreSQL RAISE DEBUG / NOTICE, пришедшие через JDBC SQLWarning chain.
     */
-   private void traceWarnings(
-           JdbcStatementEvent event
-   )
+   private void traceWarnings( JdbcStatementEvent event )
    {
       if( !isEnabled(EventType.NOTICE) )
-         return;
+          return;
 
-      Object source =
-              event.getSource();
+      Object source = event.getSource();
 
       if( !(source instanceof Statement) )
          return;
 
       try
       {
-         SQLWarning warning =
-                 ((Statement) source).getWarnings();
+         SQLWarning warning = ((Statement) source).getWarnings();
 
-         StringBuilder text =
-                 null;
+         StringBuilder text = null;
 
          while( warning != null )
          {
-            String message =
-                    warning.getMessage();
+            String message = warning.getMessage();
 
-            if( message != null
-                    && !message.isEmpty() )
+            if( !S.isNullOrEmpty(message) )
             {
                if( text == null )
-                  text = new StringBuilder(message);
+                   text = new StringBuilder(message);
                else
-                  text.append('\n').append(message);
+                   text.append('\n').append(message);
             }
 
-            warning =
-                    warning.getNextWarning();
+            warning = warning.getNextWarning();
          }
 
          if( text != null )
-         {
-            eventBus.fireSafely(
-                    JdbcMessageEvent.notice(
-                            source,
-                            text.toString()
-                    )
-            );
-         }
+             eventBus.fireSafely( JdbcMessageEvent.notice( source, text.toString() ) );
       }
-      catch( SQLException ignored )
-      {
-         /*
-          * Diagnostics не должны влиять
-          * на application JDBC.
-          */
+      catch( SQLException ignored ) {
+         /* Diagnostics не должны влиять на application JDBC. */
       }
    }
 
 
    /**
-    * Oracle DBMS_OUTPUT /
-    * PostgreSQL dbms_output extension.
+    * Oracle DBMS_OUTPUT / PostgreSQL dbms_output extension.
     */
-   private void traceDbmsOutput(
-           JdbcStatementEvent event
-   )
+   private void traceDbmsOutput( JdbcStatementEvent event )
    {
       if( !isEnabled(EventType.DBMS_OUTPUT) )
-         return;
+          return;
 
-      String text =
-              dbmsOutput.get_lines();
+      if( !dbmsOutput.isEnabled() )
+          return;
 
-      if( text == null || text.isEmpty() )
-         return;
+      String text = dbmsOutput.read();
 
-      eventBus.fireSafely(
-              JdbcMessageEvent.dbmsOutput(
-                      event.getSource(),
-                      text
-              )
-      );
+      if( S.isNullOrEmpty(text) )
+          return;
+
+      eventBus.fireSafely( JdbcMessageEvent.dbmsOutput( event.getSource(), text ) );
    }
 
    /**

@@ -932,7 +932,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          }
       }
       catch( SQLException | RuntimeException ex  ) {
-         fire( EventType.WARNING, EventPhase.ERROR, ex );
+         fire( EventType.TRANSACTION_COMMIT, EventPhase.ERROR, ex );
       }
    }
 

@@ -1,5 +1,6 @@
 package ru.inversion.tc.jdbc.trace;
 
+import ru.inversion.tc.jdbc.event.EventPhase;
 import ru.inversion.tc.jdbc.event.JdbcEvent;
 import ru.inversion.utils.Checks;
 
@@ -149,10 +150,18 @@ public final class JdbcTraceEvent extends EventObject
 
          JdbcTraceType type;
 
-         switch( event.type() ) {
+      if( event.phase() == EventPhase.ERROR )
+      {
+         type = JdbcTraceType.ERROR;
+      }
+      else
+      {
+         switch (event.type()) {
+
             case NOTICE:
                type = JdbcTraceType.NOTICE;
                break;
+
             case DBMS_OUTPUT:
                type = JdbcTraceType.DBMS_OUTPUT;
                break;
@@ -161,8 +170,9 @@ public final class JdbcTraceEvent extends EventObject
                type = JdbcTraceType.JDBC;
                break;
          }
+      }
 
-         return new JdbcTraceEvent( event.getSource(), event, type, null, properties );
+      return new JdbcTraceEvent( event.getSource(), event, type, null, properties );
    }
 
 

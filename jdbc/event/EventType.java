@@ -1,28 +1,53 @@
 package ru.inversion.tc.jdbc.event;
 
 /** Поддерживаемые типы событий */
-public enum EventType {
+public enum EventType
+{
+   CONNECTION_OPEN      (Kind.JDBC),
+   CONNECTION_CLOSE     (Kind.JDBC),
 
-   CONNECTION_OPEN,
-   CONNECTION_CLOSE,
+   STATEMENT_OPEN       (Kind.JDBC),
+   STATEMENT_EXECUTE    (Kind.JDBC),
+   STATEMENT_CLOSE      (Kind.JDBC),
 
-   STATEMENT_OPEN,
-   STATEMENT_EXECUTE,
-   STATEMENT_CLOSE,
+   RESULT_SET_OPEN      (Kind.JDBC),
+   RESULT_SET_CLOSE     (Kind.JDBC),
 
-   RESULT_SET_OPEN,
-   RESULT_SET_CLOSE,
+   TRANSACTION_COMMIT   (Kind.JDBC),
+   TRANSACTION_ROLLBACK (Kind.JDBC),
 
-   TRANSACTION_COMMIT,
-   TRANSACTION_ROLLBACK,
+   SAVEPOINT_SET        (Kind.JDBC),
+   SAVEPOINT_RELEASE    (Kind.JDBC),
+   SAVEPOINT_ROLLBACK   (Kind.JDBC),
 
-   SAVEPOINT_SET,
-   SAVEPOINT_RELEASE,
-   SAVEPOINT_ROLLBACK,
+   NOTICE               (Kind.SERVER_OUTPUT),
+   DBMS_OUTPUT          (Kind.SERVER_OUTPUT);
 
-   WARNING,
+   public enum Kind
+   {
+      JDBC,
+      SERVER_OUTPUT
+   }
 
-   NOTICE,
+   private final Kind kind;
 
-   DBMS_OUTPUT
+   EventType( Kind kind )
+   {
+      this.kind = kind;
+   }
+
+   public Kind kind()
+   {
+      return kind;
+   }
+
+   public boolean isJdbc()
+   {
+      return kind == Kind.JDBC;
+   }
+
+   public boolean isServerOutput()
+   {
+      return kind == Kind.SERVER_OUTPUT;
+   }
 }

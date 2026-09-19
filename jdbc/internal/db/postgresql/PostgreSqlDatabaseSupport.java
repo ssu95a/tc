@@ -1,6 +1,5 @@
 package ru.inversion.tc.jdbc.internal.db.postgresql;
 
-import ru.inversion.tc.dbms_output.PGOutputImpl;
 import ru.inversion.tc.jdbc.event.EventType;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.internal.db.JdbcDatabaseSupport;
@@ -25,7 +24,7 @@ public class PostgreSqlDatabaseSupport implements JdbcDatabaseSupport {
    @Override
    public JdbcServerOutputTracer createServerOutputTracer( Connection connection, JdbcEventBus eventBus, Predicate<EventType> enabled )
    {
-      return new JdbcServerOutputTracer( eventBus, new PGOutputImpl(connection), enabled, value -> setRaiseNoticeState( connection, value ) );
+      return new JdbcServerOutputTracer( eventBus, new PostgreSqlDbmsOutput(connection), enabled, value -> setRaiseNoticeState( connection, value ) );
    }
 
 
