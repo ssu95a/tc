@@ -108,6 +108,11 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
    }
 
+   /** */
+   boolean isTraceIgnored()
+   {
+      return traceIgnored;
+   }
 
    /** */
    static JdbcStatementProxy create(

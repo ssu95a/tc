@@ -7,9 +7,9 @@ public final class JdbcResultSetEvent extends JdbcEvent
    private final int openResultSetCount;
 
    /** */
-   private JdbcResultSetEvent( Object source, EventType type, int openResultSetCount )
+   private JdbcResultSetEvent( Object source, EventType type, int openResultSetCount,  boolean traceIgnored )
    {
-      super( source, type, EventPhase.ON );
+      super( source, type, EventPhase.ON, traceIgnored );
 
       if( openResultSetCount < 0 )
           throw new IllegalArgumentException( "openResultSetCount < 0" );
@@ -26,15 +26,15 @@ public final class JdbcResultSetEvent extends JdbcEvent
 
 
    /** Создание события открытия курсора */
-   public static JdbcResultSetEvent open( Object source, int openResultSetCount )
+   public static JdbcResultSetEvent open( Object source, int openResultSetCount, boolean traceIgnored )
    {
-      return new JdbcResultSetEvent( source, EventType.RESULT_SET_OPEN, openResultSetCount );
+      return new JdbcResultSetEvent( source, EventType.RESULT_SET_OPEN, openResultSetCount, traceIgnored );
    }
 
 
    /** Создание события закрытия курсора */
-   public static JdbcResultSetEvent close( Object source, int openResultSetCount )
+   public static JdbcResultSetEvent close( Object source, int openResultSetCount, boolean traceIgnored )
    {
-      return new JdbcResultSetEvent( source, EventType.RESULT_SET_CLOSE, openResultSetCount );
+      return new JdbcResultSetEvent( source, EventType.RESULT_SET_CLOSE, openResultSetCount, traceIgnored );
    }
 }

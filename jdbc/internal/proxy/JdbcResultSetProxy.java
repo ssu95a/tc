@@ -325,7 +325,7 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
          return;
       }
 
-      eventBus.fire( JdbcResultSetEvent.open( proxy, lifecycle.openCursorCount() ) );
+      eventBus.fire( JdbcResultSetEvent.open( proxy, lifecycle.openCursorCount(), statement.isTraceIgnored() ) );
    }
 
 
@@ -340,7 +340,7 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
          return;
       }
 
-      eventBus.fire( JdbcResultSetEvent.close( proxy, lifecycle.openCursorCount() ) );
+      eventBus.fire( JdbcResultSetEvent.close( proxy, lifecycle.openCursorCount(), statement.isTraceIgnored() ) );
    }
 
 
