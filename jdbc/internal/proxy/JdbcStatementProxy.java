@@ -1018,7 +1018,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    {
       if( !hasStatementListeners() )
          return;
-      eventBus.fire( JdbcStatementEvent.executeError( proxy, methodName, sql, inParameters, durationNanos, throwable ) );
+      eventBus.fire( JdbcStatementEvent.executeError( proxy, methodName, sql, inParameters, durationNanos, throwable, traceIgnored ) );
    }
 
 

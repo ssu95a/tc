@@ -20,6 +20,12 @@ public class JdbcEvent extends EventObject
       this( source, type, phase, null, traceIgnored);
    }
 
+   public JdbcEvent(Object source, EventType type, EventPhase phase)
+   {
+      this( source, type, phase, null, false );
+   }
+
+
    /** */
    public JdbcEvent(Object source, EventType type, EventPhase phase, Throwable throwable, boolean traceIgnored)
    {
@@ -38,6 +44,12 @@ public class JdbcEvent extends EventObject
 
       this.timestampNanos = System.nanoTime();
    }
+
+   public JdbcEvent(Object source, EventType type, EventPhase phase, Throwable throwable)
+   {
+      this( source, type, phase, throwable, false );
+   }
+
 
    public boolean isTraceIgnored()
    {

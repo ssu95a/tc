@@ -158,7 +158,8 @@ public final class JdbcStatementEvent extends JdbcEvent
       String sql,
       Map<Integer, Object> inParameters,
       long durationNanos,
-      Throwable throwable
+      Throwable throwable,
+      boolean traceIgnored
    )
    {
       return new JdbcStatementEvent(
@@ -176,7 +177,7 @@ public final class JdbcStatementEvent extends JdbcEvent
               durationNanos,
               throwable,
 
-              false
+              traceIgnored
       );
    }
 

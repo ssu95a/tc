@@ -351,6 +351,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
             this,
             info != null ? info.sql() : null,
             info != null ? info.hiddenParameters() : null,
+            info != null && info.isTraceIgnored(),
             lifecycle,
             eventBus
          );
