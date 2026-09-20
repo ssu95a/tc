@@ -53,17 +53,14 @@ final class JdbcSqlTraceInfo
 
       boolean traceIgnored = false;
 
-      int lineEnd = sql.length() - 1;
+      int lineEnd = sql.length();
 
       while( lineEnd > 0 )
       {
-         char ch = sql.charAt( lineEnd );
+         char ch = sql.charAt(lineEnd - 1);
 
          if( !Character.isWhitespace(ch) )
-             break;
-
-//         if( ch != '\r' && ch != '\n' && ch != ' ' && ch != '\t' )
-//             break;
+            break;
 
          lineEnd--;
       }
