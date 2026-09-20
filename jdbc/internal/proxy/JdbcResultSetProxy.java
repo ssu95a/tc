@@ -3,6 +3,7 @@ package ru.inversion.tc.jdbc.internal.proxy;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.event.JdbcResultSetEvent;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
+import ru.inversion.utils.Checks;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -25,7 +26,7 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
    private final ResultSet resultSet;
 
    /*
-    * Owner Statement handler.
+    * Владелец - Statement handler.
     *
     * Нужен:
     * - для getStatement() -> proxy Statement
@@ -37,7 +38,7 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
    private ResultSet proxy;
 
    /*
-    * Lifecycle state нашего proxy.
+    * state proxy.
     */
    private boolean closed;
 
@@ -69,10 +70,10 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
       if( statement == null )
           throw new IllegalArgumentException("statement is null" );
 
-      this.resultSet = resultSet;
-      this.statement = statement;
+      this.resultSet = Checks.Require.object(resultSet, "resultSet");
+      this.statement = Checks.Require.object(statement, "statement");
 
-      registration   = lifecycle.registerCursor(resultSet);
+      this.registration = lifecycle.registerCursor(resultSet);
    }
 
 
@@ -135,14 +136,9 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
    public Object invoke( Object proxy, Method method, Object[] args ) throws Throwable
    {
       final String methodName = method.getName();
-      /*
-       * Object identity нашего proxy никак
-       * не зависит от equals/hashCode driver-а.
-       */
+
       if( Object.class.equals( method.getDeclaringClass() ) )
-      {
-         return invokeObjectMethod( proxy, methodName, args );
-      }
+          return invokeObjectMethod( proxy, methodName, args );
 
       if( "close".equals(methodName) && method.getParameterTypes().length == 0 )
       {
@@ -156,7 +152,7 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
       }
 
       /*
-       * Никогда не выпускаем raw Statement через tracked cursor ResultSet.
+       * Не выпускаем jdbc-raw Statement, возвращаем proxy
        */
       if( "getStatement".equals(methodName) && method.getParameterTypes().length == 0 )
       {
@@ -164,10 +160,9 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
       }
 
       /*
-       * unwrap(ResultSet.class) должен оставить
-       * пользователя внутри proxy.
-       *
-       * Vendor-specific unwrap делегируется driver-у.
+       * unwrap(ResultSet.class) должен вернуть proxy.
+       * <p>
+       * Если запрос на Vendor-specific unwrap, то isWrapperFor вернет false и вызов делегируется driver-у.
        */
       if( "unwrap".equals(methodName) && args != null && args.length == 1 )
       {
@@ -308,7 +303,7 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
 
 
    /**
-    * OPEN event вызывается owner StatementProxy.
+    * OPEN event вызывается StatementProxy - владельцем данного ResultSet.
     */
    synchronized void fireOpen()
    {
@@ -329,7 +324,9 @@ public final class JdbcResultSetProxy extends JdbcObjectProxy
    }
 
 
-   /** */
+   /**
+    * CLOSE event вызываем сами, когда приходит конец жизненного цикла
+    */
    private void fireClose()
    {
       if( eventBus == null )

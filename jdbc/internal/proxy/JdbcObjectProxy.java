@@ -2,11 +2,12 @@ package ru.inversion.tc.jdbc.internal.proxy;
 
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
+import ru.inversion.utils.Checks;
 
 import java.lang.reflect.InvocationHandler;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** */
+/** Базовый proxy для всех jdbc объектов  */
 abstract class JdbcObjectProxy implements InvocationHandler {
 
    static final private AtomicInteger idGenerator = new AtomicInteger(0);
@@ -21,10 +22,7 @@ abstract class JdbcObjectProxy implements InvocationHandler {
    /** */
    JdbcObjectProxy( JdbcLifecycleManager lifecycle, JdbcEventBus eventBus ) {
 
-      if( lifecycle == null )
-         throw new IllegalArgumentException( "lifecycle is null" );
-
-      this.lifecycle = lifecycle;
+      this.lifecycle = Checks.Require.object(lifecycle,"lifecycle");
       this.eventBus  = eventBus;
    }
 

@@ -50,42 +50,23 @@ public final class JdbcTraceEventWriter
 
 
    /** */
-   private static void writeJdbcEvent(
-           JdbcTraceEvent traceEvent,
-           Writer writer
-   )
-           throws IOException
+   private static void writeJdbcEvent( JdbcTraceEvent traceEvent, Writer writer ) throws IOException
    {
-      JdbcEvent jdbcEvent =
-              traceEvent.jdbcEvent();
+      JdbcEvent jdbcEvent = traceEvent.jdbcEvent();
 
       if( jdbcEvent instanceof JdbcMessageEvent )
       {
-         writeMessageEvent(
-                 traceEvent,
-                 (JdbcMessageEvent) jdbcEvent,
-                 writer
-         );
-
+         writeMessageEvent( traceEvent, (JdbcMessageEvent) jdbcEvent, writer );
          return;
       }
 
       if( jdbcEvent instanceof JdbcStatementEvent )
       {
-         writeStatementEvent(
-                 traceEvent,
-                 (JdbcStatementEvent) jdbcEvent,
-                 writer
-         );
-
+         writeStatementEvent(traceEvent,(JdbcStatementEvent) jdbcEvent,writer);
          return;
       }
 
-      writeGenericJdbcEvent(
-              traceEvent,
-              jdbcEvent,
-              writer
-      );
+      writeGenericJdbcEvent(traceEvent,jdbcEvent,writer);
    }
 
    private static void writeMessageEvent(

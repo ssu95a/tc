@@ -3,6 +3,7 @@ package ru.inversion.tc.jdbc.internal.db.oracle;
 import ru.inversion.db.JInvDbException;
 import ru.inversion.tc.jdbc.internal.trace.JdbcDbmsOutput;
 import ru.inversion.utils.Checks;
+import ru.inversion.utils.S;
 
 import java.sql.Array;
 import java.sql.CallableStatement;
@@ -15,31 +16,29 @@ final class OracleDbmsOutput implements JdbcDbmsOutput
    private static final int READ_BATCH_SIZE = 100;
 
    /*
-    * Сохраняем существующую семантику Oracle:
-    * null = unlimited buffer.
+    * Сохраняем существующий подход Oracle: null = unlimited buffer.
     */
    private static final String ENABLE_SQL = "{call dbms_output.enable(null)}";
 
    private static final String DISABLE_SQL= "{call dbms_output.disable()}";
 
    private static final String READ_SQL =
-           "declare " +
-                   "  l_num integer; " +
-                   "begin " +
-                   "  l_num := ?; " +
-                   "  dbms_output.get_lines(?, l_num); " +
-                   "  ? := l_num; " +
-                   "end;";
+         "declare " +
+         "  l_num integer; " +
+         "begin " +
+         "  l_num := ?; " +
+         "  dbms_output.get_lines(?, l_num); " +
+         "  ? := l_num; " +
+         "end;";
 
    private final Connection connection;
 
    private boolean enabled;
 
-
    /** */
    OracleDbmsOutput( Connection connection )
    {
-      this.connection = Checks.Require.object(connection,"connection");
+      this.connection = Checks.Require.object( connection,"connection");
    }
 
 
@@ -51,6 +50,7 @@ final class OracleDbmsOutput implements JdbcDbmsOutput
    }
 
 
+   /** */
    @Override
    public void enable()
    {
@@ -72,7 +72,7 @@ final class OracleDbmsOutput implements JdbcDbmsOutput
    public void disable()
    {
       if( !enabled )
-         return;
+          return;
 
       try( CallableStatement call = connection.prepareCall(DISABLE_SQL) )
       {
@@ -89,7 +89,7 @@ final class OracleDbmsOutput implements JdbcDbmsOutput
    public String read()
    {
       if( !enabled )
-         return "";
+          return S.EMPTY_STRING;
 
       StringBuilder text = new StringBuilder();
 
@@ -112,7 +112,7 @@ final class OracleDbmsOutput implements JdbcDbmsOutput
             try
             {
                if( array == null )
-                  continue;
+                   continue;
 
                Object[] lines = (Object[]) array.getArray();
 

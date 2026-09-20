@@ -12,7 +12,7 @@ import java.util.Map;
  * <p>
  * Цель:
  * <p>
- *    отслеживание resultSet-курсоров, открытие, закрытие!
+ *    Отслеживание resultSet-курсоров, открытие, закрытие!
  */
 public final class JdbcLifecycleManager
 {

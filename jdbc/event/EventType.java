@@ -23,12 +23,16 @@ public enum EventType
    NOTICE               (Kind.SERVER_OUTPUT),
    DBMS_OUTPUT          (Kind.SERVER_OUTPUT);
 
+   /** Вид событий */
    public enum Kind
    {
+      // Связанное с объектами JDBC
       JDBC,
+      // Серверный вывод
       SERVER_OUTPUT
    }
 
+   // Вид
    private final Kind kind;
 
    EventType( Kind kind )

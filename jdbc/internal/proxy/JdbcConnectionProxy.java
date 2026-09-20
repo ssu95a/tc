@@ -10,6 +10,7 @@ import ru.inversion.tc.jdbc.internal.lifecycle.JdbcLifecycleManager;
 import ru.inversion.tc.jdbc.internal.trace.JdbcServerOutputTracer;
 import ru.inversion.tc.jdbc.internal.transaction.JdbcSavepointManager;
 import ru.inversion.tc.jdbc.internal.transaction.JdbcTransactionManager;
+import ru.inversion.utils.Checks;
 
 
 import java.lang.reflect.InvocationHandler;
@@ -46,15 +47,13 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    private final Connection connection;
 
    /*
-    * Только Statement, созданные данным Connection!
+    * Statement'ы, созданные данным Connection!
     */
    private final Map<Statement, JdbcStatementProxy> statements = new IdentityHashMap<>();
 
    private Connection proxy;
 
-   /*
-    * состояния
-    */
+   /* состояние */
    private volatile boolean closed;
 
    /* Флаг, который защищает от зацикливания */
@@ -63,9 +62,10 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /** Правитель транзакциЙ */
    private final JdbcTransactionManager transactionManager;
 
-   //
+   /** Точки и тире */
    private final JdbcSavepointManager savepoints = new JdbcSavepointManager();
 
+   /** Ловим то что выводит вдруг сервер */
    private final JdbcServerOutputTracer serverOutputTracer;
 
    /** */
@@ -73,10 +73,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    {
       super( new JdbcLifecycleManager(), eventBus );
 
-      if( connection == null )
-          throw new IllegalArgumentException( "connection is null" );
-
-      this.connection = connection;
+      this.connection = Checks.Require.object(connection,"connection");
 
       /* Что умеет подключаемая СУБД */
       JdbcDatabaseSupport support = JdbcDatabaseSupportFactory.create( connection );
@@ -88,13 +85,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
         support.transactionPolicy() // политика работы с транзакцией
       );
 
-
-      serverOutputTracer =
-              support.createServerOutputTracer(
-                      connection,
-                      eventBus,
-                      traceEnabled
-              );
+      serverOutputTracer = support.createServerOutputTracer( connection, eventBus, traceEnabled );
    }
 
    /** */
@@ -103,6 +94,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       autoFinishLevel++;
    }
 
+   /** */
    private synchronized void resumeAutoFinish()
    {
       if( autoFinishLevel <= 0 )
@@ -146,7 +138,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /**
-    * Raw connection.
+    * Raw-jdbc connection.
     */
    Connection raw()
    {
@@ -155,7 +147,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /**
-    * Lifecycle manager данного Connection.
+    * Lifecycle данного Connection.
     */
    JdbcLifecycleManager lifecycle()
    {
@@ -203,7 +195,6 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       /*
        * createStatement(...)
        *
-       * Все overload-ы.
        */
       if( "createStatement".equals(methodName) )
       {
@@ -218,12 +209,10 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
        */
       if( "prepareStatement".equals(methodName) )
       {
-         JdbcSqlTraceInfo info =
-                 JdbcSqlTraceInfo.parse(sql(args));
-
+         JdbcSqlTraceInfo info = JdbcSqlTraceInfo.parse(sql(args));
          args[0] = info.sql();
+         PreparedStatement statement = (PreparedStatement) invokeRaw( method, args );
 
-         PreparedStatement statement = (PreparedStatement) invokeRaw(method, args );
          return wrapStatement( statement, info );
       }
 
@@ -232,13 +221,11 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
        */
       if( "prepareCall".equals(methodName) )
       {
-
-         JdbcSqlTraceInfo info =
-                 JdbcSqlTraceInfo.parse(sql(args));
+         JdbcSqlTraceInfo info = JdbcSqlTraceInfo.parse(sql(args));
 
          args[0] = info.sql();
-
          CallableStatement statement = (CallableStatement) invokeRaw( method, args);
+
          return wrapStatement( statement, info );
       }
 
@@ -251,14 +238,14 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       }
 
       /*
-       * rollback() + rollback(Savepoint) обрабатывается отдельно.
+       * rollback() + rollback(Savepoint)
        */
       if( "rollback".equals(methodName) )
       {
          if( args != null && args.length == 1 && args[0] instanceof Savepoint )
-            return rollbackSavepoint( method, args );
+             return rollbackSavepoint( method, args );
          else
-            return rollback( method, args );
+             return rollback( method, args );
       }
 
       /*
@@ -283,17 +270,14 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       }
 
       /*
-       * unwrap(Connection.class) должен оставить
-       * клиента внутри proxy.
-       *
-       * Vendor-specific unwrap разрешаем driver-у.
+       * unwrap(Connection.class) возвращает proxy.
        */
       if( "unwrap".equals(methodName) && args != null && args.length == 1 )
       {
          Class<?> clazz = (Class<?>) args[0];
 
          if( clazz.isInstance(proxy) )
-            return clazz.cast(proxy);
+             return clazz.cast(proxy);
       }
 
       if( "isWrapperFor".equals(methodName) && args != null && args.length == 1 )
@@ -301,7 +285,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          Class<?> clazz = (Class<?>) args[0];
 
          if( clazz.isInstance(proxy) )
-            return true;
+             return true;
       }
 
       /*
@@ -312,40 +296,32 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /**
-    * Wrap Statement.
-    *
+    * <h5>Wrap Statement.</h5>
+    * Фабрика proxy для Statement
     * порядок:
-    *
-    * raw Statement created
-    *      |
-    * StatementProxy created
-    *      |
-    * REGISTER owner
-    *      |
-    * STATEMENT_OPEN
-    *
+    * <p>
+    * raw jdbc Statement created -> StatementProxy created -> REGISTER by connection -> event STATEMENT_OPEN
+    * <p>
     * То есть listener STATEMENT_OPEN уже видит полностью зарегистрированный Statement.
     */
    private Statement wrapStatement( Statement statement, JdbcSqlTraceInfo info ) throws Throwable
    {
       if( statement == null )
           return null;
-      /*
-       * Теоретическая защита если вдруг JDBC driver вернет тот же Statement object.
-       */
+
+      /* если вдруг JDBC driver вернет тот же Statement object. */
       synchronized (this) {
 
-         JdbcStatementProxy current = statements.get(statement);
+         JdbcStatementProxy stmnt = statements.get(statement);
 
-         if( current != null )
-             return current.proxy();
+         if( stmnt != null )
+             return stmnt.proxy();
       }
 
       JdbcStatementProxy handler = null;
 
       try
       {
-
          handler = JdbcStatementProxy.create(
             statement,
             this,
@@ -358,24 +334,22 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
          registerStatement( statement, handler );
 
-         /*
-          * Event только ПОСЛЕ owner registration.
-          */
+         /* Event только ПОСЛЕ регистрации в connection. */
          handler.fireOpen();
 
          return handler.proxy();
       }
-      catch( Throwable throwable )
-      {
-         /*
-          * Если proxy construction/registration упали, raw Statement наружу выпускать нельзя.
-          */
-         if( handler != null )
-         {
-            statementClosed( handler);
-         }
+      catch( Throwable throwable ) {
 
-         closeRawStatement( statement );
+         /* Если proxy construction/registration упали, jdbc Statement наружу выпускать нельзя, также тушим. */
+         if( handler != null )
+            statementClosed( handler);
+
+         try {
+            statement.close();
+         }
+         catch( SQLException ignored )
+         { }
 
          throw throwable;
       }
@@ -388,7 +362,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    private synchronized void registerStatement( Statement statement, JdbcStatementProxy handler ) throws SQLException
    {
       if( closed )
-         throw new SQLException("Connection is closed");
+          throw new SQLException("Connection is closed");
 
       JdbcStatementProxy current = statements.get(statement);
 
@@ -400,7 +374,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /**
-    * Получить handler по raw Statement identity.
+    * Получить proxy-handler по raw Statement identity.
     */
    private synchronized JdbcStatementProxy getStatement(Statement statement)
    {
@@ -411,8 +385,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Callback от JdbcStatementProxy.
     * <p>
-    * Stale handler не может удалить
-    * новый Statement registration.
+    * Левый handler не может удалить новый Statement registration.
     */
    void statementClosed( JdbcStatementProxy statement )
    {
@@ -439,7 +412,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
          savepoints.onTransactionCompleted();
          /*
-          * COMMIT мог закрыть server cursor ResultSet.
+          * COMMIT мог закрыть серверный курсор ResultSet.
           */
          syncStatements();
 
@@ -449,9 +422,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       }
       catch( Throwable throwable )
       {
-         /*
-          * Driver мог частично изменить JDBC state.
-          */
+         /* Driver мог частично изменить JDBC state. */
          syncStatements();
 
          fire( EventType.TRANSACTION_COMMIT, EventPhase.ERROR, throwable );
@@ -467,21 +438,13 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Явный Connection.rollback().
     */
-   private Object rollback(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object rollback( Method method, Object[] args ) throws Throwable
    {
       suspendAutoFinish();
 
-      try
-      {
-         Object value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
+      try {
+
+         Object value = invokeRaw( method, args );
 
          savepoints.onTransactionCompleted();
          /*
@@ -489,23 +452,15 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
           */
          syncStatements();
 
-         fire(
-                 EventType.TRANSACTION_ROLLBACK,
-                 EventPhase.AFTER,
-                 null
-         );
+         fire( EventType.TRANSACTION_ROLLBACK, EventPhase.AFTER, null );
 
          return value;
       }
-      catch( Throwable throwable )
-      {
+      catch( Throwable throwable ) {
+
          syncStatements();
 
-         fire(
-                 EventType.TRANSACTION_ROLLBACK,
-                 EventPhase.ERROR,
-                 throwable
-         );
+         fire( EventType.TRANSACTION_ROLLBACK, EventPhase.ERROR, throwable );
 
          throw throwable;
       }
@@ -519,50 +474,35 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Connection.rollback(Savepoint).
     */
-   private Object rollbackSavepoint(
-           Method method,
-           Object[] args
-   )
+   private Object rollbackSavepoint( Method method, Object[] args )
            throws Throwable
    {
       suspendAutoFinish();
 
-      try
-      {
-         Savepoint savepoint =
-                 (Savepoint) args[0];
+      try {
 
-         Object value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
+         Savepoint savepoint = (Savepoint) args[0];
+
+         Object value = invokeRaw( method, args );
 
          savepoints.rollbackTo(savepoint);
 
-         /*
-          * Rollback-to-savepoint также способен изменить состояние ResultSet/portal.
-          */
+         /* Rollback-to-savepoint также способен изменить состояние ResultSet. */
          syncStatements();
 
          fire( EventType.SAVEPOINT_ROLLBACK, EventPhase.AFTER, null );
 
          return value;
       }
-      catch( Throwable throwable )
-      {
+      catch( Throwable throwable ) {
+
          syncStatements();
 
-         fire(
-                 EventType.SAVEPOINT_ROLLBACK,
-                 EventPhase.ERROR,
-                 throwable
-         );
+         fire( EventType.SAVEPOINT_ROLLBACK, EventPhase.ERROR, throwable );
 
          throw throwable;
       }
-      finally
-      {
+      finally {
          resumeAutoFinish();
       }
    }
@@ -571,28 +511,17 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Connection.setSavepoint(...).
     */
-   private Object setSavepoint(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object setSavepoint( Method method, Object[] args ) throws Throwable
    {
       try
       {
          Savepoint savepoint = (Savepoint) invokeRaw( method, args );
 
-         String name =
-                 args != null
-                         && args.length == 1
-                         && args[0] instanceof String
-                         ? (String) args[0]
-                         : null;
+         String name = args != null && args.length == 1 && args[0] instanceof String ? (String) args[0] : null;
 
          savepoints.set( savepoint, name );
 
-         /*
-          * Observation.
-          */
+         /* Уведомляем */
          fire( EventType.SAVEPOINT_SET, EventPhase.AFTER, null );
 
          return savepoint;
@@ -603,39 +532,38 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       }
    }
 
-   /*
-    * setAutoCommit(true) может завершить
-    * текущую transaction и тем самым изменить
+   /**
+    * setAutoCommit(true) может завершить текущую transaction и тем самым изменить
     * состояние cursor ResultSet.
-    *
-    * Поэтому после успешного вызова
-    * синхронизируем Statement-ы.
+    * <p>
+    * Поэтому синхронизируем Statement-ы.
     */
    private Object setAutoCommit( Method method, Object[] args ) throws Throwable
    {
-         suspendAutoFinish( );
+      suspendAutoFinish( );
 
-         boolean autoCommit = (Boolean) args[0];
+      boolean autoCommit = (Boolean) args[0];
 
+      try {
+
+         Object value = invokeRaw( method, args );
+
+         if( autoCommit )
+            savepoints.onTransactionCompleted();
+
+         return value;
+      }
+      finally
+      {
          try {
-
-            Object value = invokeRaw( method, args );
-
-            if( autoCommit )
-               savepoints.onTransactionCompleted();
-
-            return value;
+            syncStatements();
          }
-         finally
-         {
-            try {
-               syncStatements();
-            }
-            finally {
-               resumeAutoFinish();
-            }
+         finally {
+            resumeAutoFinish();
          }
       }
+
+   }
 
 
    /**
@@ -654,8 +582,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          fire( EventType.SAVEPOINT_RELEASE, EventPhase.AFTER, null );
 
          /*
-          * Savepoint мог быть последним препятствием
-          * для commit idle transaction.
+          * Savepoint мог быть последним препятствием - для commit idle transaction.
           */
          transactionStateChanged();
 
@@ -733,6 +660,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
     */
    private void connectionClosed()
    {
+      // Statement'ы для закрытия, через снимок
       List<JdbcStatementProxy> snapshot;
 
       synchronized( this )
@@ -742,17 +670,14 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
          closed = true;
 
-         snapshot =
-                 new ArrayList<>(
-                         statements.values()
-                 );
+         snapshot = new ArrayList<>( statements.values() );
 
+         // чистим внутреннюю коллекцию
+         // в итоге мы никого не держим
          statements.clear();
       }
 
       /*
-       * Может быть abort / driver-side physical close.
-       *
        * SQL здесь уже выполнять нельзя.
        */
       if( serverOutputTracer != null )
@@ -775,7 +700,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    private boolean isClosed() throws SQLException
    {
       if( closed )
-         return true;
+          return true;
 
       boolean rawClosed = connection.isClosed();
 
@@ -787,7 +712,8 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /**
-    * Синхронизировать все принадлежащие Connection Statement после транзакционной или другой Connection operation.
+    * Синхронизировать все, принадлежащие Connection Statement
+    * после транзакционной или другой operation.
     */
    private void syncStatements()
    {
@@ -821,32 +747,16 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       {
          return method.invoke( connection, args );
       }
-      catch( InvocationTargetException ex )
-      {
+      catch( InvocationTargetException ex ) {
          throw ex.getCause();
       }
    }
 
 
    /**
-    * Raw Statement cleanup при ошибке построения proxy.
+    * Проверка состояния raw-jdbc Connection
     */
-   private static void closeRawStatement( Statement statement )
-   {
-      if( statement == null )
-          return;
-      try {
-         statement.close();
-      }
-      catch( SQLException ignored )
-      { }
-   }
-
-
-   /**
-    * Проверка physical Connection state.
-    */
-   private boolean isRawConnectionClosed()
+   private boolean isRawConnectionClosed( )
    {
       try
       {
@@ -881,33 +791,23 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
 
    /**
-    * Пока специализированного JdbcConnectionEvent нет,
-    * Connection/transaction/savepoint события
-    * представлены базовым JdbcEvent.
+    * Специализированного JdbcConnectionEvent нет,
+    * события представлены базовым JdbcEvent.
     */
-   private void fire (
-      EventType type,
-      EventPhase phase,
-      Throwable throwable
-   )
+   private void fire ( EventType type, EventPhase phase, Throwable throwable )
    {
       if( eventBus == null )
          return;
 
-      /*
-       * JdbcEvent instance получают только
-       * listeners на JdbcEvent.class.
-       */
+      /* JdbcEvent instance получают только listeners на JdbcEvent.class. */
       if( !eventBus.hasListeners( JdbcEvent.class) )
-      {
-         return;
-      }
+          return;
 
       eventBus.fire( new JdbcEvent( proxy, type, phase, throwable ) );
    }
 
 
-   /** */
+   /** Самое оно, чекаем IDLE TRAN */
    void transactionStateChanged()
    {
       if( closed )
@@ -924,13 +824,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          boolean committed = transactionManager.tryCommitIdleTransaction();
 
          if( committed )
-         {
-            fire(
-              EventType.TRANSACTION_COMMIT,
-              EventPhase.AFTER,
-              null
-            );
-         }
+             fire( EventType.TRANSACTION_COMMIT, EventPhase.AFTER, null );
       }
       catch( SQLException | RuntimeException ex  ) {
          fire( EventType.TRANSACTION_COMMIT, EventPhase.ERROR, ex );

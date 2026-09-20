@@ -6,11 +6,19 @@ import ru.inversion.utils.lstn.ListenerManFactory;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** */
+/**
+ * <h5>Служба доставки событий</h5>
+ * <p>
+ * Ведение подписки на события Jdbc слоя
+ */
 public final class JdbcEventBus
 {
    private final Map<Class<? extends JdbcEvent>, IListenerManConsumer<JdbcEventListener<?>>> listenerMap = new ConcurrentHashMap<>();
 
+  /** Добавление слушателя событий
+    * <p>
+    * @param <E> тип события
+    */
    public synchronized <E extends JdbcEvent> void addListener( Class<E> eventClass, JdbcEventListener<? super E> listener )
    {
       if( eventClass == null || listener == null )
@@ -22,6 +30,10 @@ public final class JdbcEventBus
    }
 
 
+   /** Удаление слушателя событий
+    * <p>
+    * @param <E> тип события
+    */
    public synchronized <E extends JdbcEvent> void removeListener( Class<E> eventClass, JdbcEventListener<? super E> listener )
    {
       if( eventClass == null || listener == null )
@@ -53,10 +65,9 @@ public final class JdbcEventBus
 
 
    /**
-    * Observation-only dispatch.
-    *
-    * Ошибка listener-а не должна влиять
-    * на JDBC/application.
+    * Уведомление слушателей
+    * <p>
+    * Ошибка listener-а не должна влиять на JDBC/application.
     */
    public <E extends JdbcEvent> void fire( E event )
    {
@@ -65,9 +76,7 @@ public final class JdbcEventBus
 
       fireForClass( event, event.getClass() );
 
-      /*
-       * JdbcEvent.class получает все события.
-       */
+      /* Слушатели JdbcEvent.class получают все события независимо от типа. */
       if( event.getClass() != JdbcEvent.class )
           fireForClass( event, JdbcEvent.class );
    }
@@ -87,11 +96,9 @@ public final class JdbcEventBus
       catch( ThreadDeath | VirtualMachineError fatal ) {
          throw fatal;
       }
-      catch( Throwable ignored )
-      {
+      catch( Throwable ignored ) {
          /*
-          * Ошибка listener manager не должна влиять на JDBC/application.
-          *
+          * Ошибка listener'а не должна влиять на JDBC/application.
           * TODO diagnostics/logging.
           */
       }
@@ -101,18 +108,15 @@ public final class JdbcEventBus
    @SuppressWarnings({ "rawtypes", "unchecked" })
    private static void fireListener( JdbcEventListener<?> listener, JdbcEvent event )
    {
-      try
-      {
+      try {
          ((JdbcEventListener) listener).onJdbcEvent(event);
       }
-      catch( ThreadDeath | VirtualMachineError fatal )
-      {
+      catch( ThreadDeath | VirtualMachineError fatal ) {
          throw fatal;
       }
       catch( Throwable ignored ) {
          /*
-          * Один broken listener
-          * не мешает остальным.
+          * Один сломанный listener не мешает остальным.
           *
           * TODO diagnostics/logging.
           */

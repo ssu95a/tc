@@ -217,7 +217,7 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
    private void syncRaiseNoticeState()
    {
       if( raiseNoticeState == null )
-         return;
+          return;
 
       boolean enable = isEnabled(EventType.NOTICE);
 

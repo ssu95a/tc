@@ -4,7 +4,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.TreeMap;
 
-/** Событие для Statement */
+/** <h5>Событие для Statement</h5> */
 public final class JdbcStatementEvent extends JdbcEvent
 {
    private final String methodName;
@@ -78,45 +78,45 @@ public final class JdbcStatementEvent extends JdbcEvent
    public static JdbcStatementEvent open( Object source, String sql, boolean traceIgnored )
    {
       return new JdbcStatementEvent(
-              source,
+         source,
 
-              EventType.STATEMENT_OPEN,
-              EventPhase.ON,
+         EventType.STATEMENT_OPEN,
+         EventPhase.ON,
 
-              null,
-              sql,
+         null,
+         sql,
 
-              null,
-              null,
+         null,
+         null,
 
-              0L,
-              null,
-              traceIgnored
+         0L,
+         null,
+         traceIgnored
       );
    }
 
 
    /** */
-   public static JdbcStatementEvent beforeExecute(
+   public static JdbcStatementEvent beforeExecute (
       Object source, String methodName, String sql, Map<Integer, Object> inParameters, boolean traceIgnored
    )
    {
       return new JdbcStatementEvent(
-              source,
+         source,
 
-              EventType.STATEMENT_EXECUTE,
-              EventPhase.BEFORE,
+         EventType.STATEMENT_EXECUTE,
+         EventPhase.BEFORE,
 
-              methodName,
-              sql,
+         methodName,
+         sql,
 
-              inParameters,
-              null,
+         inParameters,
+         null,
 
-              0L,
-              null,
+         0L,
+         null,
 
-              traceIgnored
+         traceIgnored
       );
    }
 
@@ -152,7 +152,7 @@ public final class JdbcStatementEvent extends JdbcEvent
 
 
    /** */
-   public static JdbcStatementEvent executeError(
+   public static JdbcStatementEvent executeError (
       Object source,
       String methodName,
       String sql,

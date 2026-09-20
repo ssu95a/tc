@@ -8,7 +8,6 @@ import ru.inversion.db.session.SessionEnvironment;
 import ru.inversion.tc.jdbc.event.JdbcEventBus;
 import ru.inversion.tc.jdbc.trace.JdbcTraceType;
 import ru.inversion.tc.jdbc.trace.JdbcTracer;
-import ru.inversion.tc.tracer.IQueryDBTracer;
 import ru.inversion.utils.ConnectionStringFormatEnum;
 import ru.inversion.utils.S;
 import ru.inversion.utils.Tags;
@@ -85,14 +84,18 @@ public class TaskContext implements AutoCloseable {
         }
     }
 
-    private void traceConnectionInfo( Connection rawConnection )
-            throws SQLException
+    /** */
+    private void traceConnectionInfo( Connection rawConnection ) throws SQLException
     {
         jdbcTracer.trace (
-                connection,
-                JdbcTraceType.INFO,
-                "DB connection",
-                U.toMap( "USER", rawConnection.getMetaData().getUserName(), "URL", rawConnection.getMetaData().getURL(), "sessionId", sessionId )
+            connection,
+            JdbcTraceType.INFO,
+            "DB connection",
+            U.toMap (
+                "USER", rawConnection.getMetaData().getUserName(),
+                "URL" , rawConnection.getMetaData().getURL(),
+                "sessionId", sessionId
+            )
         );
     }
 

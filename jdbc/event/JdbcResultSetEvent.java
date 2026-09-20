@@ -1,10 +1,13 @@
 package ru.inversion.tc.jdbc.event;
 
+import ru.inversion.utils.Checks;
 
-/** Событие связанное с ResultSet-Курсором */
+/** <h5>Событие связанное с ResultSet-Курсором</h5> */
 public final class JdbcResultSetEvent extends JdbcEvent
 {
+   // Кол-во открытых на данный момент курсоров
    private final int openResultSetCount;
+
 
    /** */
    private JdbcResultSetEvent( Object source, EventType type, int openResultSetCount,  boolean traceIgnored )
@@ -12,8 +15,9 @@ public final class JdbcResultSetEvent extends JdbcEvent
       super( source, type, EventPhase.ON, traceIgnored );
 
       if( openResultSetCount < 0 )
-          throw new IllegalArgumentException( "openResultSetCount < 0" );
-
+         throw new IllegalArgumentException(
+                 "openResultSetCount < 0"
+         );
       this.openResultSetCount = openResultSetCount;
    }
 
