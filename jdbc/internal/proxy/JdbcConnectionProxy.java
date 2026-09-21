@@ -365,34 +365,51 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Явный Connection.commit().
     */
-   private Object commit( Method method, Object[] args ) throws Throwable
+   private Object commit(
+           Method method,
+           Object[] args
+   )
+           throws Throwable
    {
       suspendAutoFinish();
 
       try
       {
-         Object value = invokeRaw( method, args );
+         Object value =
+                 invokeRaw(
+                         method,
+                         args
+                 );
 
          transactionCompleted();
-         /*
-          * COMMIT мог закрыть серверный курсор ResultSet.
-          */
-         syncStatements();
 
-         fire( EventType.TRANSACTION_COMMIT, EventPhase.AFTER, null );
+         fire(
+                 EventType.TRANSACTION_COMMIT,
+                 EventPhase.AFTER,
+                 null
+         );
 
          return value;
       }
       catch( Throwable throwable )
       {
-         /* Driver мог частично изменить JDBC state. */
+         /*
+          * COMMIT мог частично изменить JDBC state,
+          * но transactionCompleted() вызывать нельзя:
+          * факт завершения transaction не подтверждён.
+          */
          syncStatements();
 
-         fire( EventType.TRANSACTION_COMMIT, EventPhase.ERROR, throwable );
+         fire(
+                 EventType.TRANSACTION_COMMIT,
+                 EventPhase.ERROR,
+                 throwable
+         );
 
          throw throwable;
       }
-      finally {
+      finally
+      {
          resumeAutoFinish();
       }
    }
@@ -401,38 +418,52 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Явный Connection.rollback().
     */
-   private Object rollback( Method method, Object[] args ) throws Throwable
+   private Object rollback(
+           Method method,
+           Object[] args
+   )
+           throws Throwable
    {
       suspendAutoFinish();
 
-      try {
-
-         Object value = invokeRaw( method, args );
+      try
+      {
+         Object value =
+                 invokeRaw(
+                         method,
+                         args
+                 );
 
          transactionCompleted();
-         /*
-          * ROLLBACK закрывает/инвалидирует cursor state.
-          */
-         syncStatements();
 
-         fire( EventType.TRANSACTION_ROLLBACK, EventPhase.AFTER, null );
+         fire(
+                 EventType.TRANSACTION_ROLLBACK,
+                 EventPhase.AFTER,
+                 null
+         );
 
          return value;
       }
-      catch( Throwable throwable ) {
-
+      catch( Throwable throwable )
+      {
+         /*
+          * Driver мог частично изменить JDBC state.
+          */
          syncStatements();
 
-         fire( EventType.TRANSACTION_ROLLBACK, EventPhase.ERROR, throwable );
+         fire(
+                 EventType.TRANSACTION_ROLLBACK,
+                 EventPhase.ERROR,
+                 throwable
+         );
 
          throw throwable;
       }
-      finally {
+      finally
+      {
          resumeAutoFinish();
       }
-
    }
-
 
    /**
     * Connection.rollback(Savepoint).

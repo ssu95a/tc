@@ -507,10 +507,13 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
                       && !isBatchExecute(methodName);
 
       /*
-       * Старые незабранные OUT значения относятся
-       * к предыдущему execute.
+       * Любой новый execute инвалидирует незабранные
+       * OUT values предыдущего execute.
+       *
+       * Для batch новые OUT cursor slots не создаём,
+       * но старые всё равно должны исчезнуть.
        */
-      if( prepareOutCursors )
+      if( callable )
          removePendingOutCursorSlots();
 
       long started =
@@ -564,8 +567,8 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
               System.nanoTime() - started;
 
       /*
-       * Только успешный execute создаёт потенциальные
-       * OUT REF_CURSOR.
+       * Только успешный non-batch execute создаёт
+       * потенциальные OUT REF_CURSOR.
        *
        * Делаем это до любого transactionStateChanged().
        */
@@ -634,6 +637,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
       return value;
    }
+
 
    /**
     * Statement.getMoreResults()
@@ -1059,21 +1063,73 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     * Здесь JdbcResultSetProxy создаётся обычным существующим способом и сам регистрирует
     * ResultSet в JdbcLifecycleManager.
     */
-   private CursorSlot fillCursorSlot( CursorSlot slot, ResultSet resultSet )
+   /**
+    * Заполняет CursorSlot реальным ResultSet
+    * и создаёт JdbcResultSetProxy.
+    */
+   private CursorSlot fillCursorSlot(
+           CursorSlot slot,
+           ResultSet resultSet
+   )
    {
       if( slot == null )
-         throw new IllegalArgumentException( "slot is null" );
+         throw new IllegalArgumentException(
+                 "slot is null"
+         );
 
       if( resultSet == null )
-         throw new IllegalArgumentException( "resultSet is null" );
+         throw new IllegalArgumentException(
+                 "resultSet is null"
+         );
 
-      if( slot.resultSet != null || slot.proxy != null )
-         throw new IllegalStateException( "CursorSlot already filled" );
+      if( slot.resultSet != null
+              || slot.proxy != null )
+      {
+         throw new IllegalStateException(
+                 "CursorSlot already filled"
+         );
+      }
 
       if( isRawResultSetClosed(resultSet) )
-          return null;
+         return null;
 
-      JdbcResultSetProxy handler = JdbcResultSetProxy.create( resultSet, this, lifecycle, eventBus );
+      JdbcResultSetProxy handler;
+
+      try
+      {
+         handler =
+                 JdbcResultSetProxy.create(
+                         resultSet,
+                         this,
+                         lifecycle,
+                         eventBus
+                 );
+      }
+      catch( RuntimeException | Error ex )
+      {
+         /*
+          * Для OUT REF_CURSOR slot уже находится
+          * в cursorSlots.
+          *
+          * Для обычного ResultSet remove() просто no-op.
+          */
+         cursorSlots.remove(slot);
+
+         /*
+          * Proxy не создан — raw ResultSet наружу
+          * выпускать уже нельзя.
+          */
+         try
+         {
+            resultSet.close();
+         }
+         catch( Throwable closeEx )
+         {
+            ex.addSuppressed(closeEx);
+         }
+
+         throw ex;
+      }
 
       /*
        * JdbcResultSetProxy.create() уже зарегистрировал
@@ -1086,6 +1142,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
       return slot;
    }
+
 
    /**
     * ResultSetProxy сообщает owner-у,
