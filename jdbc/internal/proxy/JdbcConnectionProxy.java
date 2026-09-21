@@ -781,9 +781,8 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          return;
 
       /*
-       * REF_CURSOR зарегистрирован как OUT,
-       * execute уже состоялся,
-       * но application ещё не сделал getObject().
+       * Есть REF_CURSOR, который execute уже вернул,
+       * но application ещё не запросил через getObject().
        */
       if( hasPendingOutCursors() )
           return;
@@ -791,18 +790,33 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       if( lifecycle.hasOpenCursors() )
           return;
 
+      suspendAutoFinish();
+
       try
       {
          boolean committed = transactionManager.tryCommitIdleTransaction();
 
          if( committed )
-             fire( EventType.TRANSACTION_COMMIT, EventPhase.AFTER, null );
+         {
+            /*
+             * Единая точка завершения transaction:
+             *
+             * savepoints
+             * pending OUT cursors
+             * фактическое состояние ResultSet/Statement
+             */
+            transactionCompleted();
+
+            fire( EventType.TRANSACTION_COMMIT, EventPhase.AFTER, null );
+         }
       }
       catch( SQLException | RuntimeException ex ) {
          fire( EventType.TRANSACTION_COMMIT, EventPhase.ERROR, ex );
       }
+      finally {
+         resumeAutoFinish();
+      }
    }
-
 
    /** */
    void statementExecutionFailed( Throwable throwable )

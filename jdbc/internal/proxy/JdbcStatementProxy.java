@@ -106,16 +106,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
    /* Все Statement-owned cursor ResultSet. */
    private final List<CursorSlot> cursorSlots =new ArrayList<>();
-   /*
-    * OUT REF_CURSOR slots текущего execute.
-    *
-    * До getObject(index) slot пустой.
-    *
-    * После getObject(index) тот же slot содержит
-    * ResultSet + JdbcResultSetProxy.
-    */
-   private final Map<Integer, CursorSlot> outCursorSlots =
-           new TreeMap<>();
 
    /* */
    private Statement proxy;
@@ -512,19 +502,16 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
               executedSql
       );
 
+      boolean prepareOutCursors =
+              callable
+                      && !isBatchExecute(methodName);
+
       /*
-       * До raw execute создаём пустые гнёзда OUT REF_CURSOR.
-       *
-       * Именно наличие pending slot запрещает
-       * auto-finish transaction.
-       *
-       * Batch OUT параметры не возвращает.
+       * Старые незабранные OUT значения относятся
+       * к предыдущему execute.
        */
-      if( callable
-              && !isBatchExecute(methodName) )
-      {
-         prepareOutCursorSlots();
-      }
+      if( prepareOutCursors )
+         removePendingOutCursorSlots();
 
       long started =
               System.nanoTime();
@@ -545,14 +532,8 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
                  System.nanoTime() - started;
 
          /*
-          * PostgreSQL SQL ERROR переводит transaction
-          * в aborted state.
-          *
-          * Recovery должен произойти ДО ERROR event,
-          * иначе server-output listeners сами могут
-          * получить 25P02.
-          *
-          * Для Oracle/default policy это no-op.
+          * Новых OUT cursor slots ещё нет:
+          * они создаются только после успешного execute.
           */
          connection.statementExecutionFailed(
                  throwable
@@ -583,18 +564,22 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
               System.nanoTime() - started;
 
       /*
+       * Только успешный execute создаёт потенциальные
+       * OUT REF_CURSOR.
+       *
+       * Делаем это до любого transactionStateChanged().
+       */
+      if( prepareOutCursors )
+         prepareOutCursorSlots();
+
+      /*
        * Новый обычный cursor регистрируем
        * ДО reconcile старых.
-       *
-       * OUT REF_CURSOR здесь не читаем!
        */
       CursorSlot newCursor = null;
 
       if( value instanceof ResultSet )
       {
-         /*
-          * executeQuery().
-          */
          newCursor =
                  registerCursorResultSet(
                          (ResultSet) value
@@ -602,9 +587,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       }
       else if( Boolean.TRUE.equals(value) )
       {
-         /*
-          * Statement.execute() == true.
-          */
          ResultSet current =
                  statement.getResultSet();
 
@@ -619,14 +601,10 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        */
       syncCursorResultSets();
 
-      /*
-       * Синхронизируем факт закрытия Statement.
-       */
       syncClosedState();
 
       /*
-       * ВАЖНО:
-       * outParameterValues() REF_CURSOR НЕ читает.
+       * REF_CURSOR tracer здесь не читает.
        */
       fireAfterExecute(
               methodName,
@@ -642,12 +620,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
               || (Boolean.FALSE.equals(value)
               && statement.getUpdateCount() == -1) )
       {
-         /*
-          * Если есть pending REF_CURSOR,
-          * ConnectionProxy увидит его через
-          * hasPendingOutCursors()
-          * и auto-commit не произойдёт.
-          */
          connection.transactionStateChanged();
       }
 
@@ -662,7 +634,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
       return value;
    }
-
 
    /**
     * Statement.getMoreResults()
@@ -900,19 +871,13 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     */
    private void prepareOutCursorSlots()
    {
-      removePendingOutCursorSlots();
-
-      for( Map.Entry<Integer, Integer> entry
-              : outParameters.entrySet() )
+      for( Map.Entry<Integer, Integer> entry : outParameters.entrySet() )
       {
          if( isRefCursorType(entry.getValue()) )
-         {
-            cursorSlots.add(
-                    new CursorSlot(entry.getKey())
-            );
-         }
+             cursorSlots.add( new CursorSlot( entry.getKey() ) );
       }
    }
+
 
    private CursorSlot findOutCursorSlot( int index )
    {
@@ -943,145 +908,84 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    }
 
 
-   /**
-    * Execute закончился ошибкой.
-    *
-    * Все новые OUT slots ещё пустые,
-    * поэтому просто забываем их.
-    */
-   private void discardPendingOutCursorSlots()
-   {
-      if( outCursorSlots.isEmpty() )
-         return;
-
-      ArrayList<Integer> remove =
-              new ArrayList<>();
-
-      for( Map.Entry<Integer, CursorSlot> entry
-              : outCursorSlots.entrySet() )
-      {
-         if( entry.getValue().isPending() )
-            remove.add(entry.getKey());
-      }
-
-      for( Integer index : remove )
-         outCursorSlots.remove(index);
-   }
-
 
    /**
     * CallableStatement.getObject(index)
     * для OUT REF_CURSOR.
     */
-   private Object getOutCursor(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object getOutCursor( Method method, Object[] args ) throws Throwable
    {
-      int index =
-              (Integer) args[0];
+      int index = (Integer) args[0];
+
+      CursorSlot slot = findOutCursorSlot(index);
 
       /*
-       * Только application вызывает реальный getObject().
-       *
-       * Tracer REF_CURSOR никогда не читает.
+       * application реально читает OUT value.
        */
-      Object value =
-              invokeRaw(
-                      method,
-                      args
-              );
-
-      CursorSlot slot =
-              outCursorSlots.get(index);
+      Object value = invokeRaw( method, args );
 
       /*
-       * Slot отсутствует:
+       * Pending slot отсутствует:
        *
        * - getObject до execute;
        * - повторный getObject;
-       * - другой нестандартный JDBC сценарий.
-       *
-       * Если driver всё же вернул ResultSet,
-       * ведём его как обычный cursor.
+       * - нестандартное поведение driver-а.
        */
       if( slot == null )
       {
          if( value instanceof ResultSet )
-         {
-            return wrapCursorResultSet(
-                    (ResultSet) value
-            );
-         }
+             return wrapCursorResultSet( (ResultSet) value );
 
          return value;
       }
 
-      /*
-       * Slot уже материализован.
-       *
-       * wrapCursorResultSet() по identity найдёт
-       * существующий proxy, если driver вернул
-       * тот же raw ResultSet.
-       */
-      if( !slot.isPending() )
-      {
-         if( value instanceof ResultSet )
-         {
-            return wrapCursorResultSet(
-                    (ResultSet) value
-            );
-         }
-
-         return value;
-      }
-
-      /*
-       * REF_CURSOR реально вернулся.
-       */
       if( value instanceof ResultSet )
       {
          ResultSet resultSet = (ResultSet) value;
 
-         /*
-          * Теоретически raw ResultSet уже мог быть зарегистрирован другим JDBC path.
-          */
-         CursorSlot current = findCursorSlot( resultSet );
+         /* Если driver вернул ResultSet, который уже зарегистрирован другим способом. */
+         CursorSlot current = findCursorSlot(resultSet);
 
          if( current != null && current.proxy != null && !current.proxy.isLifecycleClosed() )
          {
-            outCursorSlots.remove(index);
+            /*
+             * Pending slot больше не нужен. Реальный cursor уже существует.
+             */
+            cursorSlots.remove(slot);
 
             current.proxy.fireOpen();
 
             return current.proxy.proxy();
          }
 
-         CursorSlot materialized = fillCursorSlot( slot, resultSet );
+         CursorSlot filled =
+                 fillCursorSlot(
+                         slot,
+                         resultSet
+                 );
 
-         outCursorSlots.remove(index);
-
-         if( materialized == null )
+         if( filled == null )
          {
+            /*
+             * Driver вернул уже закрытый ResultSet.
+             */
+            cursorSlots.remove(slot);
+
             connection.transactionStateChanged();
+
             return value;
          }
 
-         materialized.proxy.fireOpen();
+         filled.proxy.fireOpen();
 
-         return materialized.proxy.proxy();
+         return filled.proxy.proxy();
       }
 
       /*
-       * Зарегистрированный REF_CURSOR реально
-       * вернул null / не ResultSet.
-       *
-       * Pending slot больше не должен держать
-       * transaction открытой.
+       * REF_CURSOR реально оказался null
+       * или driver вернул не ResultSet.
        */
-      if( outCursorSlots.get(index) == slot )
-         outCursorSlots.remove(index);
+      cursorSlots.remove(slot);
 
       connection.transactionStateChanged();
 
@@ -1118,71 +1022,70 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
    /**
     * Регистрирует обычный Statement-owned ResultSet.
-    *
+    * <p>
     * OPEN event здесь НЕ отправляется.
     */
-   private CursorSlot registerCursorResultSet(
-           ResultSet resultSet
-   )
+   private CursorSlot registerCursorResultSet( ResultSet resultSet )
    {
-      CursorSlot current =
-              findCursorSlot(resultSet);
+      if( resultSet == null )
+          return null;
+
+      CursorSlot current = findCursorSlot(resultSet);
 
       if( current != null )
-         return current;
+      {
+         if( current.proxy != null && !current.proxy.isLifecycleClosed() )
+            return current;
+
+         cursorSlots.remove(current);
+      }
 
       if( isRawResultSetClosed(resultSet) )
-         return null;
+          return null;
 
-      CursorSlot slot = new CursorSlot(null);
+      CursorSlot slot   = new CursorSlot(null);
+      CursorSlot filled = fillCursorSlot( slot, resultSet );
 
-      cursorSlots.add(slot);
+      if( filled != null )
+         cursorSlots.add(filled);
 
-      return fillCursorSlot( slot, resultSet );
+      return filled;
    }
+
 
    /**
     * Заполнение CursorSlot.
     * <p>
-    * Здесь JdbcResultSetProxy создаётся обычным
-    * существующим способом и сам регистрирует
+    * Здесь JdbcResultSetProxy создаётся обычным существующим способом и сам регистрирует
     * ResultSet в JdbcLifecycleManager.
     */
-   private CursorSlot fillCursorSlot(CursorSlot slot, ResultSet resultSet )
+   private CursorSlot fillCursorSlot( CursorSlot slot, ResultSet resultSet )
    {
       if( slot == null )
          throw new IllegalArgumentException( "slot is null" );
 
       if( resultSet == null )
-         throw new IllegalArgumentException("resultSet is null");
+         throw new IllegalArgumentException( "resultSet is null" );
 
-      if( !slot.isPending() && slot.parameterIndex != null )
-          throw new IllegalStateException( "CursorSlot already materialized" );
+      if( slot.resultSet != null || slot.proxy != null )
+         throw new IllegalStateException( "CursorSlot already filled" );
 
       if( isRawResultSetClosed(resultSet) )
-         return null;
+          return null;
 
-      JdbcResultSetProxy handler =
-              JdbcResultSetProxy.create(
-                      resultSet,
-                      this,
-                      lifecycle,
-                      eventBus
-              );
+      JdbcResultSetProxy handler = JdbcResultSetProxy.create( resultSet, this, lifecycle, eventBus );
+
       /*
-       * JdbcResultSetProxy уже зарегистрировал
-       * cursor в lifecycle.
+       * JdbcResultSetProxy.create() уже зарегистрировал
+       * реальный ResultSet в JdbcLifecycleManager.
        *
-       * Только теперь pending slot становится заполненным
+       * Только после этого pending slot становится filled.
        */
       slot.resultSet = resultSet;
       slot.proxy     = handler;
 
-      cursorResultSets.put(resultSet, slot );
-
       return slot;
    }
-
 
    /**
     * ResultSetProxy сообщает owner-у,
@@ -1190,37 +1093,14 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     *
     * Identity slot/proxy защищает от stale handler.
     */
-   void cursorResultSetClosed(
-           JdbcResultSetProxy resultSet
-   )
+   void cursorResultSetClosed( JdbcResultSetProxy resultSet )
    {
       CursorSlot current = findCursorSlot( resultSet.raw() );
 
       if( current == null || current.proxy != resultSet )
-      {
-         return;
-      }
+          return;
 
-      cursorSlots.remove( resultSet.raw() );
-
-      /*
-       * Если это OUT REF_CURSOR,
-       * убираем также lookup по parameter index.
-       */
-      if( current.parameterIndex != null )
-      {
-         CursorSlot byIndex =
-                 outCursorSlots.get(
-                         current.parameterIndex
-                 );
-
-         if( byIndex == current )
-         {
-            outCursorSlots.remove(
-                    current.parameterIndex
-            );
-         }
-      }
+      cursorSlots.remove(current);
    }
 
 
@@ -1230,21 +1110,25 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     */
    private void syncCursorResultSets()
    {
-      if( cursorResultSets.isEmpty() )
+      if( cursorSlots.isEmpty() )
          return;
 
       ArrayList<CursorSlot> snapshot =
               new ArrayList<>(
-                      cursorResultSets.values()
+                      cursorSlots
               );
 
       for( CursorSlot slot : snapshot )
       {
+         /*
+          * Pending OUT REF_CURSOR.
+          * Raw ResultSet пока нет.
+          */
+         if( slot.proxy == null )
+            continue;
+
          JdbcResultSetProxy resultSet =
                  slot.proxy;
-
-         if( resultSet == null )
-            continue;
 
          if( resultSet.isLifecycleClosed() )
          {
@@ -1276,21 +1160,23 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     */
    private void closeCursorSlots()
    {
+      if( cursorSlots.isEmpty() )
+         return;
+
       ArrayList<CursorSlot> snapshot =
-              cursorResultSets.isEmpty()
-                      ? new ArrayList<>()
-                      : new ArrayList<>(
-                      cursorResultSets.values()
+              new ArrayList<>(
+                      cursorSlots
               );
 
-      cursorResultSets.clear();
-
       /*
-       * Здесь исчезают и pending slots,
-       * и дополнительный index lookup
-       * materialized OUT cursor-ов.
+       * Сначала очищаем owner collection.
+       *
+       * Callback JdbcResultSetProxy ->
+       * cursorResultSetClosed() после этого безопасный no-op.
+       *
+       * Pending REF_CURSOR также просто исчезают.
        */
-      outCursorSlots.clear();
+      cursorSlots.clear();
 
       for( CursorSlot slot : snapshot )
       {
@@ -1298,7 +1184,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
             slot.proxy.closedByStatement();
       }
    }
-
 
    /**
     * Явный Statement.close().
