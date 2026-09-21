@@ -485,62 +485,44 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /**
     * execute* operation.
     */
-   private Object execute(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object execute( Method method, Object[] args ) throws Throwable
    {
-      String methodName =
-              method.getName();
+      String methodName = method.getName();
 
-      String executedSql =
-              sql(args);
+      String executedSql= sql(args);
 
-      fireBeforeExecute(
-              methodName,
-              executedSql
-      );
+      fireBeforeExecute( methodName, executedSql );
 
-      boolean prepareOutCursors =
-              callable
-                      && !isBatchExecute(methodName);
+      boolean prepareOutCursors = callable && !isBatchExecute(methodName);
 
       /*
-       * Любой новый execute инвалидирует незабранные
-       * OUT values предыдущего execute.
-       *
-       * Для batch новые OUT cursor slots не создаём,
-       * но старые всё равно должны исчезнуть.
+       * Старые незабранные OUT значения относятся
+       * к предыдущему execute.
        */
-      if( callable )
-         removePendingOutCursorSlots();
+      if( prepareOutCursors )
+          removePendingOutCursorSlots();
 
-      long started =
-              System.nanoTime();
+      long started = System.nanoTime();
 
       Object value;
 
       try
       {
-         value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
+         value = invokeRaw( method, args );
       }
       catch( Throwable throwable )
       {
-         long duration =
-                 System.nanoTime() - started;
+         long duration = System.nanoTime() - started;
 
          /*
           * Новых OUT cursor slots ещё нет:
           * они создаются только после успешного execute.
+          *
+          * Для PostgreSQL SQLException здесь сначала
+          * восстанавливает aborted transaction через
+          * raw ROLLBACK.
           */
-         connection.statementExecutionFailed(
-                 throwable
-         );
+         connection.statementExecutionFailed( throwable );
 
          /*
           * Driver мог закрыть предыдущий current cursor
@@ -553,27 +535,46 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
           */
          syncClosedState();
 
-         fireExecuteError(
-                 methodName,
-                 executedSql,
-                 duration,
-                 throwable
-         );
+         /*
+          * ERROR listeners запускаются уже после rollback recovery.
+          *
+          * Server-output tracer для PostgreSQL может здесь
+          * выполнить raw SQL (например DBMS_OUTPUT read) и при
+          * autoCommit=false открыть новую read-only transaction.
+          */
+         fireExecuteError( methodName, executedSql, duration, throwable );
+
+         /*
+          * Observation после rollback могла снова изменить
+          * transaction state.
+          *
+          * PostgreSQL policy безопасно завершит только idle
+          * read-only transaction:
+          *
+          * - без cursor
+          * - без pending REF_CURSOR
+          * - без savepoint
+          * - READ_COMMITTED
+          * - без assigned XID
+          *
+          * Oracle/default здесь ничего автоматически
+          * commit не будут.
+          */
+         connection.transactionStateChanged();
 
          throw throwable;
       }
 
-      long duration =
-              System.nanoTime() - started;
+      long duration = System.nanoTime() - started;
 
       /*
-       * Только успешный non-batch execute создаёт
-       * потенциальные OUT REF_CURSOR.
+       * Только успешный execute создаёт потенциальные
+       * OUT REF_CURSOR.
        *
        * Делаем это до любого transactionStateChanged().
        */
       if( prepareOutCursors )
-         prepareOutCursorSlots();
+          prepareOutCursorSlots();
 
       /*
        * Новый обычный cursor регистрируем
@@ -583,20 +584,13 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
       if( value instanceof ResultSet )
       {
-         newCursor =
-                 registerCursorResultSet(
-                         (ResultSet) value
-                 );
+         newCursor = registerCursorResultSet( (ResultSet) value );
       }
       else if( Boolean.TRUE.equals(value) )
       {
-         ResultSet current =
-                 statement.getResultSet();
+         ResultSet current = statement.getResultSet();
 
-         newCursor =
-                 registerCursorResultSet(
-                         current
-                 );
+         newCursor = registerCursorResultSet( current );
       }
 
       /*
@@ -609,31 +603,18 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       /*
        * REF_CURSOR tracer здесь не читает.
        */
-      fireAfterExecute(
-              methodName,
-              executedSql,
-              duration
-      );
+      fireAfterExecute( methodName, executedSql, duration );
 
       if( newCursor != null )
-      {
-         newCursor.proxy.fireOpen();
-      }
-      else if( !"execute".equals(methodName)
-              || (Boolean.FALSE.equals(value)
-              && statement.getUpdateCount() == -1) )
+          newCursor.proxy.fireOpen();
+      else if( !"execute".equals(methodName) || (Boolean.FALSE.equals(value) && statement.getUpdateCount() == -1) )
       {
          connection.transactionStateChanged();
       }
 
-      /*
-       * executeQuery() наружу возвращает proxy.
-       */
-      if( value instanceof ResultSet
-              && newCursor != null )
-      {
-         return newCursor.proxy.proxy();
-      }
+      /* executeQuery() наружу возвращает proxy. */
+      if( value instanceof ResultSet && newCursor != null )
+          return newCursor.proxy.proxy();
 
       return value;
    }
