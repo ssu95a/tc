@@ -289,13 +289,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     */
    boolean hasPendingOutCursors()
    {
-      for( CursorSlot slot : outCursorSlots.values() )
-      {
-         if( slot.isPending() )
-            return true;
-      }
-
-      return false;
+      return !outCursorSlots.isEmpty();
    }
 
 
@@ -1114,15 +1108,11 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
                          resultSet
                  );
 
+         outCursorSlots.remove(index);
+
          if( materialized == null )
          {
-            /*
-             * Driver вернул уже закрытый cursor.
-             */
-            outCursorSlots.remove(index);
-
             connection.transactionStateChanged();
-
             return value;
          }
 
@@ -1529,7 +1519,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    void transactionCompleted()
    {
       if( closed )
-         return;
+          return;
 
       outCursorSlots.clear();
 
@@ -1557,16 +1547,12 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
 
    /** */
-   private static boolean isRawResultSetClosed(
-           ResultSet resultSet
-   )
+   private static boolean isRawResultSetClosed( ResultSet resultSet )
    {
-      try
-      {
+      try {
          return resultSet.isClosed();
       }
-      catch( SQLException ignored )
-      {
+      catch( SQLException ignored ) {
          /*
           * Считаем ResultSet открытым.
           */

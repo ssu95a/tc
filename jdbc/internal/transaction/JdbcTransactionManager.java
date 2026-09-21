@@ -33,9 +33,7 @@ public final class JdbcTransactionManager
    /** */
    public synchronized boolean tryCommitIdleTransaction( ) throws SQLException
    {
-      /*
-       * Универсальные JDBC/lifecycle ограничения.
-       */
+      /* JDBC/lifecycle ограничения. */
       if( lifecycle.hasOpenCursors() )
           return false;
 
@@ -67,8 +65,6 @@ public final class JdbcTransactionManager
 
       connection.commit();
 
-      savepoints.onTransactionCompleted();
-
       return true;
    }
 
@@ -90,8 +86,6 @@ public final class JdbcTransactionManager
           return false;
 
       connection.rollback();
-
-      savepoints.onTransactionCompleted();
 
       return true;
    }

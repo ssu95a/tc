@@ -28,7 +28,6 @@ import java.sql.Statement;
 import java.util.*;
 import java.util.function.Predicate;
 
-
 /**
  * <h5>JDBC Connection proxy.</h5>
  * <p>
@@ -46,9 +45,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /** real JDBC connection*/
    private final Connection connection;
 
-   /*
-    * Statement'ы, созданные данным Connection!
-    */
+   /* Statement'ы, созданные данным Connection! */
    private final Map<Statement, JdbcStatementProxy> statements = new IdentityHashMap<>();
 
    private Connection proxy;
@@ -108,9 +105,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       return autoFinishLevel != 0;
    }
 
-   /**
-    * Создаёт handler + JDBC Connection proxy.
-    */
+   /** Создаёт handler + JDBC Connection proxy.  */
    public static JdbcConnectionProxy create( Connection connection, JdbcEventBus eventBus, Predicate<EventType> traceEnabled )
    {
       JdbcConnectionProxy handler = new JdbcConnectionProxy( connection, eventBus, traceEnabled );
@@ -127,28 +122,21 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       return handler;
    }
 
-
-   /**
-    * JDBC proxy Connection.
-    */
+   /** JDBC proxy Connection. */
    public Connection proxy()
    {
       return proxy;
    }
 
 
-   /**
-    * Raw-jdbc connection.
-    */
+   /** Raw-jdbc connection. */
    Connection raw()
    {
       return connection;
    }
 
 
-   /**
-    * Lifecycle данного Connection.
-    */
+   /** Lifecycle данного Connection. */
    JdbcLifecycleManager lifecycle()
    {
       return lifecycle;
@@ -161,52 +149,37 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    {
       String methodName = method.getName();
 
-      /*
-       * Object методы
-       */
+      /* Object методы */
       if( Object.class.equals(method.getDeclaringClass() ) )
           return invokeObjectMethod( proxy, methodName, args );
 
-      /*
-       * Connection.close()
-       */
+      /* Connection.close() /
       if( "close".equals(methodName) && method.getParameterTypes().length == 0 )
       {
          close();
          return null;
       }
 
-      /*
-       * Connection.abort(Executor)
-       */
+      /* Connection.abort(Executor) */
       if( "abort".equals(methodName) )
       {
          return abort( method, args );
       }
 
-      /*
-       * Connection.isClosed()
-       */
+      /* Connection.isClosed() */
       if( "isClosed".equals(methodName) && method.getParameterTypes().length == 0 )
       {
          return isClosed();
       }
 
-      /*
-       * createStatement(...)
-       *
-       */
+      /* createStatement(...)  */
       if( "createStatement".equals(methodName) )
       {
          Statement statement = (Statement) invokeRaw( method, args );
          return wrapStatement( statement, null );
       }
 
-      /*
-       * prepareStatement(...)
-       *
-       * SQL всегда первый argument.
-       */
+      /* prepareStatement(...), SQL всегда первый argument. */
       if( "prepareStatement".equals(methodName) )
       {
          JdbcSqlTraceInfo info = JdbcSqlTraceInfo.parse(sql(args));
@@ -216,9 +189,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          return wrapStatement( statement, info );
       }
 
-      /*
-       * prepareCall(...)
-       */
+      /* prepareCall(...) */
       if( "prepareCall".equals(methodName) )
       {
          JdbcSqlTraceInfo info = JdbcSqlTraceInfo.parse(sql(args));
@@ -229,17 +200,13 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          return wrapStatement( statement, info );
       }
 
-      /*
-       * Явный COMMIT.
-       */
+      /* Явный COMMIT. */
       if( "commit".equals(methodName) && method.getParameterTypes().length == 0 )
       {
          return commit( method, args );
       }
 
-      /*
-       * rollback() + rollback(Savepoint)
-       */
+      /* rollback() + rollback(Savepoint) */
       if( "rollback".equals(methodName) )
       {
          if( args != null && args.length == 1 && args[0] instanceof Savepoint )
@@ -257,9 +224,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          return setSavepoint( method, args );
       }
 
-      /*
-       * releaseSavepoint(Savepoint)
-       */
+      /* releaseSavepoint(Savepoint) */
       if( "releaseSavepoint".equals(methodName) )
       {
          return releaseSavepoint( method, args );
@@ -269,9 +234,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
           return setAutoCommit(  method, args  );
       }
 
-      /*
-       * unwrap(Connection.class) возвращает proxy.
-       */
+      /* unwrap(Connection.class) возвращает proxy. */
       if( "unwrap".equals(methodName) && args != null && args.length == 1 )
       {
          Class<?> clazz = (Class<?>) args[0];
@@ -410,7 +373,6 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       {
          Object value = invokeRaw( method, args );
 
-         savepoints.onTransactionCompleted();
          transactionCompleted();
          /*
           * COMMIT мог закрыть серверный курсор ResultSet.
@@ -447,7 +409,6 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
          Object value = invokeRaw( method, args );
 
-         savepoints.onTransactionCompleted();
          transactionCompleted();
          /*
           * ROLLBACK закрывает/инвалидирует cursor state.
@@ -551,7 +512,6 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          Object value = invokeRaw( method, args );
 
          if( autoCommit ) {
-            savepoints.onTransactionCompleted();
             transactionCompleted();
          }
 
@@ -692,7 +652,6 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          statement.closedByConnection();
       }
 
-      savepoints.onTransactionCompleted();
       transactionCompleted();
 
       fireConnectionClose();
@@ -859,7 +818,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
          if( doRollback )
          {
-            syncStatements();
+            transactionCompleted();
             fire( EventType.TRANSACTION_ROLLBACK, EventPhase.AFTER, null );
          }
       }
@@ -872,7 +831,6 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          resumeAutoFinish();
       }
    }
-
 
    /** */
    private boolean hasPendingOutCursors()
@@ -892,24 +850,23 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       return false;
    }
 
+
    /** */
    private void transactionCompleted()
    {
+      savepoints.onTransactionCompleted();
+
       List<JdbcStatementProxy> snapshot;
 
       synchronized( this )
       {
-         snapshot =
-                 statements.isEmpty()
-                         ? Collections.emptyList()
-                         : new ArrayList<>(
-                         statements.values()
-                 );
+         snapshot = statements.isEmpty() ? Collections.emptyList() : new ArrayList<>( statements.values() );
       }
 
       for( JdbcStatementProxy statement : snapshot )
-         statement.transactionCompleted();
+           statement.transactionCompleted();
    }
+
 
    /** Для поиска Savepoint из TaskContext'а */
    public static Savepoint findSavepoint( Connection connection, String name )
