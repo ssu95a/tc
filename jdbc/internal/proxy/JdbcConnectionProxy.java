@@ -153,7 +153,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       if( Object.class.equals(method.getDeclaringClass() ) )
           return invokeObjectMethod( proxy, methodName, args );
 
-      /* Connection.close() /
+      /* Connection.close() */
       if( "close".equals(methodName) && method.getParameterTypes().length == 0 )
       {
          close();

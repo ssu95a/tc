@@ -17,13 +17,7 @@ import java.sql.SQLType;
 import java.sql.Statement;
 import java.sql.Types;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.IdentityHashMap;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
+import java.util.*;
 
 
 /**
@@ -100,29 +94,18 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /*
     * Последние успешно установленные positional IN parameters.
     */
-   private final Map<Integer, Object> inParameters =
-           new TreeMap<>();
+   private final Map<Integer, Object> inParameters = new TreeMap<>();
 
    /*
-    * Positional OUT parameters CallableStatement.
+    * OUT parameters CallableStatement.
     *
     * key   -> parameter index
     * value -> java.sql.Types value
-    *
-    * value может быть null, если registerOutParameter()
-    * пришёл через неизвестную нам форму API.
     */
-   private final Map<Integer, Integer> outParameters =
-           new TreeMap<>();
+   private final Map<Integer, Integer> outParameters = new TreeMap<>();
 
-   /*
-    * Все materialized Statement-owned cursor ResultSet.
-    *
-    * Identity semantics обязательны.
-    */
-   private final Map<ResultSet, CursorSlot> cursorResultSets =
-           new IdentityHashMap<>();
-
+   /* Все Statement-owned cursor ResultSet. */
+   private final List<CursorSlot> cursorSlots =new ArrayList<>();
    /*
     * OUT REF_CURSOR slots текущего execute.
     *
@@ -157,22 +140,10 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
            boolean traceIgnored
    )
    {
-      super(
-              lifecycle,
-              eventBus
-      );
+      super( lifecycle, eventBus );
 
-      this.statement =
-              Checks.Require.object(
-                      statement,
-                      "statement"
-              );
-
-      this.connection =
-              Checks.Require.object(
-                      connection,
-                      "connection"
-              );
+      this.statement = Checks.Require.object( statement, "statement" );
+      this.connection= Checks.Require.object( connection, "connection" );
 
       this.sql = sql;
 
@@ -289,9 +260,14 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     */
    boolean hasPendingOutCursors()
    {
-      return !outCursorSlots.isEmpty();
-   }
+      for( CursorSlot slot : cursorSlots )
+      {
+         if( slot.isPending() )
+            return true;
+      }
 
+      return false;
+   }
 
    /** */
    @Override
@@ -569,14 +545,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
                  System.nanoTime() - started;
 
          /*
-          * Execute не состоялся.
-          *
-          * Пустые REF_CURSOR slots этого execute
-          * больше не имеют смысла.
-          */
-         discardPendingOutCursorSlots();
-
-         /*
           * PostgreSQL SQL ERROR переводит transaction
           * в aborted state.
           *
@@ -813,16 +781,10 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     * Определяет positional PreparedStatement setter
     * без ручного списка SET_METHODS.
     */
-   private static boolean isParameterSetter(
-           Method method,
-           Object[] args
-   )
+   private static boolean isParameterSetter( Method method, Object[] args )
    {
-      if( args == null
-              || args.length == 0 )
-      {
+      if( args == null || args.length == 0 )
          return false;
-      }
 
       if( !(args[0] instanceof Integer) )
          return false;
@@ -837,9 +799,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        *
        * сюда не проходят.
        */
-      return PreparedStatement.class.isAssignableFrom(
-              method.getDeclaringClass()
-      );
+      return PreparedStatement.class.isAssignableFrom( method.getDeclaringClass() );
    }
 
 
@@ -940,35 +900,46 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     */
    private void prepareOutCursorSlots()
    {
-      /*
-       * OUT index относится только к одному execute.
-       *
-       * Старые materialized ResultSet остаются
-       * в cursorResultSets.
-       */
-      outCursorSlots.clear();
-
-      if( outParameters.isEmpty() )
-         return;
+      removePendingOutCursorSlots();
 
       for( Map.Entry<Integer, Integer> entry
               : outParameters.entrySet() )
       {
-         if( !isRefCursorType(
-                 entry.getValue()
-         ))
+         if( isRefCursorType(entry.getValue()) )
          {
-            continue;
+            cursorSlots.add(
+                    new CursorSlot(entry.getKey())
+            );
          }
-
-         int index =
-                 entry.getKey();
-
-         outCursorSlots.put(
-                 index,
-                 new CursorSlot(index)
-         );
       }
+   }
+
+   private CursorSlot findOutCursorSlot( int index )
+   {
+      for( CursorSlot slot : cursorSlots )
+      {
+         if( slot.parameterIndex != null
+                 && slot.parameterIndex == index
+                 && slot.isPending() )
+         {
+            return slot;
+         }
+      }
+
+      return null;
+   }
+
+   private CursorSlot findCursorSlot(
+           ResultSet resultSet
+   )
+   {
+      for( CursorSlot slot : cursorSlots )
+      {
+         if( slot.resultSet == resultSet )
+            return slot;
+      }
+
+      return null;
    }
 
 
@@ -1071,42 +1042,23 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        */
       if( value instanceof ResultSet )
       {
-         ResultSet resultSet =
-                 (ResultSet) value;
+         ResultSet resultSet = (ResultSet) value;
 
          /*
-          * Теоретически raw ResultSet уже мог быть
-          * зарегистрирован другим JDBC path.
+          * Теоретически raw ResultSet уже мог быть зарегистрирован другим JDBC path.
           */
-         CursorSlot current =
-                 cursorResultSets.get(
-                         resultSet
-                 );
+         CursorSlot current = findCursorSlot( resultSet );
 
-         if( current != null
-                 && current.proxy != null
-                 && !current.proxy.isLifecycleClosed() )
+         if( current != null && current.proxy != null && !current.proxy.isLifecycleClosed() )
          {
-            /*
-             * Pending исчезает только ПОСЛЕ того,
-             * как real cursor уже существует
-             * в обычном lifecycle.
-             */
-            outCursorSlots.put(
-                    index,
-                    current
-            );
+            outCursorSlots.remove(index);
 
             current.proxy.fireOpen();
 
             return current.proxy.proxy();
          }
 
-         CursorSlot materialized =
-                 materializeCursorSlot(
-                         slot,
-                         resultSet
-                 );
+         CursorSlot materialized = fillCursorSlot( slot, resultSet );
 
          outCursorSlots.remove(index);
 
@@ -1173,88 +1125,39 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
            ResultSet resultSet
    )
    {
-      if( resultSet == null )
-         return null;
-
       CursorSlot current =
-              cursorResultSets.get(
-                      resultSet
-              );
+              findCursorSlot(resultSet);
 
       if( current != null )
-      {
-         if( current.proxy != null
-                 && !current.proxy.isLifecycleClosed() )
-         {
-            return current;
-         }
+         return current;
 
-         cursorResultSets.remove(
-                 resultSet
-         );
-      }
-
-      /*
-       * Уже закрытый ResultSet lifecycle
-       * не регистрируем.
-       */
       if( isRawResultSetClosed(resultSet) )
          return null;
 
-      CursorSlot slot =
-              new CursorSlot(null);
+      CursorSlot slot = new CursorSlot(null);
 
-      return materializeCursorSlot(
-              slot,
-              resultSet
-      );
+      cursorSlots.add(slot);
+
+      return fillCursorSlot( slot, resultSet );
    }
 
-
    /**
-    * Материализация CursorSlot.
-    *
+    * Заполнение CursorSlot.
+    * <p>
     * Здесь JdbcResultSetProxy создаётся обычным
     * существующим способом и сам регистрирует
     * ResultSet в JdbcLifecycleManager.
-    *
-    * Поэтому:
-    *
-    * pending slot == true
-    *       ↓
-    * JdbcResultSetProxy.create()
-    *       ↓
-    * lifecycle.hasOpenCursors() == true
-    *       ↓
-    * slot.resultSet/proxy заполняются
-    *       ↓
-    * pending slot == false
-    *
-    * Окна, где transaction можно завершить,
-    * между этими состояниями нет.
     */
-   private CursorSlot materializeCursorSlot(
-           CursorSlot slot,
-           ResultSet resultSet
-   )
+   private CursorSlot fillCursorSlot(CursorSlot slot, ResultSet resultSet )
    {
       if( slot == null )
-         throw new IllegalArgumentException(
-                 "slot is null"
-         );
+         throw new IllegalArgumentException( "slot is null" );
 
       if( resultSet == null )
-         throw new IllegalArgumentException(
-                 "resultSet is null"
-         );
+         throw new IllegalArgumentException("resultSet is null");
 
-      if( !slot.isPending()
-              && slot.parameterIndex != null )
-      {
-         throw new IllegalStateException(
-                 "CursorSlot already materialized"
-         );
-      }
+      if( !slot.isPending() && slot.parameterIndex != null )
+          throw new IllegalStateException( "CursorSlot already materialized" );
 
       if( isRawResultSetClosed(resultSet) )
          return null;
@@ -1266,21 +1169,16 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
                       lifecycle,
                       eventBus
               );
-
       /*
        * JdbcResultSetProxy уже зарегистрировал
        * cursor в lifecycle.
        *
-       * Только теперь pending slot становится
-       * materialized.
+       * Только теперь pending slot становится заполненным
        */
       slot.resultSet = resultSet;
       slot.proxy     = handler;
 
-      cursorResultSets.put(
-              resultSet,
-              slot
-      );
+      cursorResultSets.put(resultSet, slot );
 
       return slot;
    }
@@ -1296,20 +1194,14 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
            JdbcResultSetProxy resultSet
    )
    {
-      CursorSlot current =
-              cursorResultSets.get(
-                      resultSet.raw()
-              );
+      CursorSlot current = findCursorSlot( resultSet.raw() );
 
-      if( current == null
-              || current.proxy != resultSet )
+      if( current == null || current.proxy != resultSet )
       {
          return;
       }
 
-      cursorResultSets.remove(
-              resultSet.raw()
-      );
+      cursorSlots.remove( resultSet.raw() );
 
       /*
        * Если это OUT REF_CURSOR,
@@ -1521,13 +1413,22 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       if( closed )
           return;
 
-      outCursorSlots.clear();
+      removePendingOutCursorSlots();
 
       syncCursorResultSets();
 
       syncClosedState();
    }
 
+
+   private void removePendingOutCursorSlots()
+   {
+      for( Iterator<CursorSlot> it = cursorSlots.iterator(); it.hasNext(); )
+      {
+         if( it.next().isPending() )
+             it.remove();
+      }
+   }
 
    /** */
    private boolean isRawStatementClosed()
@@ -1564,16 +1465,12 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /**
     * SQL конкретного execute*().
     */
-   private String sql(
-           Object[] args
-   )
+   private String sql( Object[] args )
    {
       /*
        * Statement.execute*(String,...)
        */
-      if( args != null
-              && args.length > 0
-              && args[0] instanceof String )
+      if( args != null && args.length > 0 && args[0] instanceof String )
       {
          return (String) args[0];
       }
