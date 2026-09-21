@@ -12,31 +12,31 @@ import java.util.function.Predicate;
 
 
 /**
- * Server-side DB output -> JDBC trace.
- *
+ * Вывод Server-side DB output -> JDBC trace.
+ * <p>
  * DBMS_OUTPUT:
  *   Oracle / PostgreSQL через IDBMSOutput.
- *
+ * <p>
  * NOTICE:
  *   PostgreSQL RAISE DEBUG / NOTICE через SQLWarning.
  *
- * JDBC/core specifics и raw Connection здесь отсутствуют.
  */
 public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcStatementEvent>, AutoCloseable
 {
    private final JdbcEventBus eventBus;
 
    /*
-    * Oracle DBMS_OUTPUT или PostgreSQL dbms_output extension.
+    * Oracle DBMS_OUTPUT или PostgreSQL dbms_output
     */
    private final JdbcDbmsOutput dbmsOutput;
+
    /*
-    * PostgreSQL-specific callback:
-    *
+    * PostgreSQL callback:
+    * <p>
     * true  -> включить server RAISE DEBUG/NOTICE
     * false -> выключить
-    *
-    * null для СУБД, где эта возможность отсутствует.
+    * <p>
+    * raiseNoticeState = null для СУБД, где эта возможность отсутствует.
     */
    private final Consumer<Boolean> raiseNoticeState;
 
@@ -226,10 +226,6 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
 
       raiseNoticeState.accept(enable);
 
-      /*
-       * Меняем локальное состояние только
-       * после успешного DB-specific callback.
-       */
       raiseNoticeEnabled = enable;
    }
 
@@ -244,15 +240,13 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
 
    /**
     * Connection уже физически закрыт/abort.
-    *
-    * Никаких SQL cleanup операций.
     */
    public synchronized void closedByConnection()
    {
       close(false);
    }
 
-
+   /** */
    private void close( boolean cleanupServerState )
    {
       if( closed )
@@ -260,32 +254,21 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
 
       closed = true;
 
-      eventBus.removeListener(
-              JdbcStatementEvent.class,
-              this
-      );
+      eventBus.removeListener( JdbcStatementEvent.class, this );
 
       if( !cleanupServerState )
          return;
 
-      /*
-       * Observation cleanup не должен мешать
-       * закрытию JDBC connection.
-       */
-      if( raiseNoticeState != null
-              && raiseNoticeEnabled )
+      if( raiseNoticeState != null && raiseNoticeEnabled )
       {
-         try
-         {
+         try {
             raiseNoticeState.accept(false);
          }
-         catch( ThreadDeath | VirtualMachineError fatal )
-         {
+         catch( ThreadDeath | VirtualMachineError fatal ) {
             throw fatal;
          }
          catch( Throwable ignored )
-         {
-         }
+         { }
          finally
          {
             raiseNoticeEnabled = false;

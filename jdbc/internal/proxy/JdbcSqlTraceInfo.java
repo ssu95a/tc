@@ -80,7 +80,6 @@ final class JdbcSqlTraceInfo
 
          /*
           * Идём снизу вверх только пока
-          * продолжается trailing comment block.
           */
          if( !line.startsWith("--") )
              break;
@@ -95,21 +94,9 @@ final class JdbcSqlTraceInfo
             parseHiddenParameters( line.substring( HIDE_MARKER.length() ), hidden );
          }
 
-         /*
-          * Неизвестная --директива не мешает
-          * продолжить разбор trailing comment block.
-          */
-
          if( newLine < 0 )
              break;
 
-         /*
-          * Следующая итерация заканчивается
-          * перед найденным '\n'.
-          *
-          * CR из CRLF попадёт в substring,
-          * но trim() его уберёт.
-          */
          lineEnd = newLine;
       }
 

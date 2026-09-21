@@ -9,4 +9,7 @@ public interface JdbcTransactionPolicy
 {
    /** Допустим ли автоматический COMMIT idle-транзакции. */
    boolean canCommitIdleTransaction(Connection connection ) throws SQLException;
+
+   /** */
+   default boolean rollbackAfterError(SQLException exception) { return false; }
 }

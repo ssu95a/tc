@@ -40,4 +40,9 @@ public final class PostgreSqlTransactionPolicy implements JdbcTransactionPolicy
          }
       }
    }
+
+   /** */
+   @Override
+   public boolean rollbackAfterError( SQLException exception ) { return true; }
+
 }

@@ -411,6 +411,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          Object value = invokeRaw( method, args );
 
          savepoints.onTransactionCompleted();
+         transactionCompleted();
          /*
           * COMMIT мог закрыть серверный курсор ResultSet.
           */
@@ -447,6 +448,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          Object value = invokeRaw( method, args );
 
          savepoints.onTransactionCompleted();
+         transactionCompleted();
          /*
           * ROLLBACK закрывает/инвалидирует cursor state.
           */
@@ -548,8 +550,10 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
          Object value = invokeRaw( method, args );
 
-         if( autoCommit )
+         if( autoCommit ) {
             savepoints.onTransactionCompleted();
+            transactionCompleted();
+         }
 
          return value;
       }
@@ -689,6 +693,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       }
 
       savepoints.onTransactionCompleted();
+      transactionCompleted();
 
       fireConnectionClose();
    }
@@ -816,6 +821,14 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       if( isAutoFinishSuspended() )
          return;
 
+      /*
+       * REF_CURSOR зарегистрирован как OUT,
+       * execute уже состоялся,
+       * но application ещё не сделал getObject().
+       */
+      if( hasPendingOutCursors() )
+          return;
+
       if( lifecycle.hasOpenCursors() )
           return;
 
@@ -826,11 +839,77 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
          if( committed )
              fire( EventType.TRANSACTION_COMMIT, EventPhase.AFTER, null );
       }
-      catch( SQLException | RuntimeException ex  ) {
+      catch( SQLException | RuntimeException ex ) {
          fire( EventType.TRANSACTION_COMMIT, EventPhase.ERROR, ex );
       }
    }
 
+
+   /** */
+   void statementExecutionFailed( Throwable throwable )
+   {
+      if( closed )
+          return;
+
+      suspendAutoFinish();
+
+      try
+      {
+         boolean doRollback = transactionManager.tryRollbackAfterError( throwable );
+
+         if( doRollback )
+         {
+            syncStatements();
+            fire( EventType.TRANSACTION_ROLLBACK, EventPhase.AFTER, null );
+         }
+      }
+      catch( SQLException | RuntimeException ex )
+      {
+         throwable.addSuppressed(ex);
+         fire( EventType.TRANSACTION_ROLLBACK, EventPhase.ERROR, ex );
+      }
+      finally {
+         resumeAutoFinish();
+      }
+   }
+
+
+   /** */
+   private boolean hasPendingOutCursors()
+   {
+      List<JdbcStatementProxy> snapshot;
+
+      synchronized( this )
+      {
+         snapshot = statements.isEmpty() ? Collections.emptyList() : new ArrayList<>( statements.values() );
+      }
+
+      for( JdbcStatementProxy statement : snapshot )
+      {
+         if( statement.hasPendingOutCursors() )
+             return true;
+      }
+      return false;
+   }
+
+   /** */
+   private void transactionCompleted()
+   {
+      List<JdbcStatementProxy> snapshot;
+
+      synchronized( this )
+      {
+         snapshot =
+                 statements.isEmpty()
+                         ? Collections.emptyList()
+                         : new ArrayList<>(
+                         statements.values()
+                 );
+      }
+
+      for( JdbcStatementProxy statement : snapshot )
+         statement.transactionCompleted();
+   }
 
    /** Для поиска Savepoint из TaskContext'а */
    public static Savepoint findSavepoint( Connection connection, String name )

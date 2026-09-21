@@ -71,4 +71,28 @@ public final class JdbcTransactionManager
 
       return true;
    }
+
+
+   /** */
+   public synchronized boolean tryRollbackAfterError( Throwable throwable )
+           throws SQLException
+   {
+      if( !(throwable instanceof SQLException) )
+         return false;
+
+      if( connection.isClosed() )
+          return false;
+
+      if( connection.getAutoCommit() )
+          return false;
+
+      if(!policy.rollbackAfterError((SQLException) throwable))
+          return false;
+
+      connection.rollback();
+
+      savepoints.onTransactionCompleted();
+
+      return true;
+   }
 }
