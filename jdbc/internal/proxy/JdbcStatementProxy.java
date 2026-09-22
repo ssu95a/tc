@@ -28,52 +28,36 @@ import java.util.*;
 public final class JdbcStatementProxy extends JdbcObjectProxy
 {
    private static final String HIDDEN_VALUE     = "***";
+
    private static final String REF_CURSOR_VALUE = "<REF_CURSOR>";
 
-
-   /**
-    * Гнездо cursor-а.
-    *
-    * Обычный ResultSet:
-    *
-    *    parameterIndex == null
-    *    resultSet      != null
-    *    proxy          != null
-    *
-    * Pending OUT REF_CURSOR:
-    *
-    *    parameterIndex != null
-    *    resultSet      == null
-    *    proxy          == null
-    *
-    * Materialized OUT REF_CURSOR:
-    *
-    *    parameterIndex != null
-    *    resultSet      != null
-    *    proxy          != null
-    */
+   /** Хранилище одного курсора используемого в рамках данного statement*/
    private static final class CursorSlot
    {
+      /* для курсоров получаем через Out параметры, номер параметра в registerOutParameter */
       private final Integer parameterIndex;
 
+      /* jdbc-raw  ResultSet */
       private ResultSet resultSet;
 
+      /* proxy */
       private JdbcResultSetProxy proxy;
 
       private CursorSlot( Integer parameterIndex ) {
          this.parameterIndex = parameterIndex;
       }
 
-      /** */
+      /* В ожидании, ожидается после execute, но ещё не populate через getObject()*/
       private boolean isPending()
       {
          return parameterIndex != null && resultSet == null;
       }
    }
 
+   /* jdbc-raw Statement */
    private final Statement statement;
 
-   /* Proxy Connection, raw никогда не возвращаем. */
+   /* Proxy Connection, в рамках которого живем, raw-jdbc никогда не возвращаем. */
    private final JdbcConnectionProxy connection;
 
    /*
@@ -87,18 +71,18 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    private final boolean prepared;
    private final boolean callable;
 
+   /* флаг, что не нужно statement выводить в трейс */
    private final boolean traceIgnored;
 
+   /* сейчас в режиме закрытия курсоров */
    private boolean closingResultSets;
 
-   /*
-    * Последние успешно установленные positional IN parameters.
-    */
+   /* Последние успешно установленные positional IN parameters. */
    private final Map<Integer, Object> inParameters = new TreeMap<>();
 
    /*
     * OUT parameters CallableStatement.
-    *
+    * индекс + sqlType ожидаемого значения параметра
     * key   -> parameter index
     * value -> java.sql.Types value
     */
@@ -107,27 +91,28 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /* Все Statement-owned cursor ResultSet. */
    private final List<CursorSlot> cursorSlots =new ArrayList<>();
 
-   /* */
+   /* прокси на jdbc-Statement*/
    private Statement proxy;
 
-   /* */
+   /* Признак что, statement уже закрыт */
    private boolean closed;
 
    /* */
    private boolean getMoreResultsMode;
 
+   /* Индексы параметров которые не надо выводить в лог  */
    private final Set<Integer> hiddenParameters;
 
 
    /** */
    private JdbcStatementProxy(
-           Statement statement,
-           JdbcConnectionProxy connection,
-           String sql,
-           Set<Integer> hiddenParameters,
-           JdbcLifecycleManager lifecycle,
-           JdbcEventBus eventBus,
-           boolean traceIgnored
+      Statement statement,
+      JdbcConnectionProxy connection,
+      String sql,
+      Set<Integer> hiddenParameters,
+      JdbcLifecycleManager lifecycle,
+      JdbcEventBus eventBus,
+      boolean traceIgnored
    )
    {
       super( lifecycle, eventBus );
@@ -135,24 +120,16 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       this.statement = Checks.Require.object( statement, "statement" );
       this.connection= Checks.Require.object( connection, "connection" );
 
-      this.sql = sql;
+      this.sql      = sql;
 
-      this.prepared =
-              statement instanceof PreparedStatement;
+      this.prepared = statement instanceof PreparedStatement;
 
-      this.callable =
-              statement instanceof CallableStatement;
+      this.callable = statement instanceof CallableStatement;
 
-      this.hiddenParameters =
-              hiddenParameters == null
-                      || hiddenParameters.isEmpty()
-                      ? Collections.emptySet()
-                      : Collections.unmodifiableSet(
-                      new TreeSet<>(hiddenParameters)
-              );
+      this.hiddenParameters = hiddenParameters == null || hiddenParameters.isEmpty() ? Collections.emptySet()
+              : Collections.unmodifiableSet( new TreeSet<>(hiddenParameters) );
 
-      this.traceIgnored =
-              traceIgnored;
+      this.traceIgnored = traceIgnored;
    }
 
 
@@ -164,14 +141,14 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
 
    /** */
-   static JdbcStatementProxy create(
-           Statement statement,
-           JdbcConnectionProxy connection,
-           String sql,
-           Set<Integer> hiddenParameters,
-           boolean traceIgnored,
-           JdbcLifecycleManager lifecycle,
-           JdbcEventBus eventBus
+   static JdbcStatementProxy create (
+      Statement statement,
+      JdbcConnectionProxy connection,
+      String sql,
+      Set<Integer> hiddenParameters,
+      boolean traceIgnored,
+      JdbcLifecycleManager lifecycle,
+      JdbcEventBus eventBus
    )
    {
       JdbcStatementProxy handler =
@@ -187,27 +164,21 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
       Class<?> jdbcInterface;
 
-      if( statement instanceof CallableStatement )
-      {
-         jdbcInterface =
-                 CallableStatement.class;
+      if( statement instanceof CallableStatement ) {
+         jdbcInterface = CallableStatement.class;
       }
-      else if( statement instanceof PreparedStatement )
-      {
-         jdbcInterface =
-                 PreparedStatement.class;
+      else if( statement instanceof PreparedStatement ) {
+         jdbcInterface = PreparedStatement.class;
       }
-      else
-      {
-         jdbcInterface =
-                 Statement.class;
+      else {
+         jdbcInterface = Statement.class;
       }
 
       handler.proxy =
               (Statement) Proxy.newProxyInstance(
-                      JdbcStatementProxy.class.getClassLoader(),
-                      new Class<?>[] { jdbcInterface },
-                      handler
+                   JdbcStatementProxy.class.getClassLoader(),
+                   new Class<?>[] { jdbcInterface },
+                   handler
               );
 
       /*
@@ -244,174 +215,98 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /**
     * Есть OUT REF_CURSOR, который ещё не был
     * получен application через getObject(index).
-    *
+    * <p>
     * JdbcConnectionProxy использует это вместе с
     * lifecycle.hasOpenCursors() перед auto-finish.
     */
    boolean hasPendingOutCursors()
    {
       for( CursorSlot slot : cursorSlots )
-      {
          if( slot.isPending() )
-            return true;
-      }
+             return true;
 
       return false;
    }
 
    /** */
    @Override
-   public Object invoke(
-           Object proxy,
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   public Object invoke( Object proxy, Method method, Object[] args ) throws Throwable
    {
-      String methodName =
-              method.getName();
+      String methodName = method.getName();
 
-      /*
-       * Object methods.
-       */
-      if( Object.class.equals(
-              method.getDeclaringClass()
-      ))
+      /* Object methods. */
+      if( Object.class.equals( method.getDeclaringClass() ))
       {
-         return invokeObjectMethod(
-                 proxy,
-                 methodName,
-                 args
-         );
+         return invokeObjectMethod( proxy, methodName, args );
       }
 
-      /*
-       * Statement.close().
-       */
-      if( "close".equals(methodName)
-              && method.getParameterTypes().length == 0 )
+      // Statement.close().
+      if( "close".equals(methodName) && method.getParameterTypes().length == 0 )
       {
          close();
-
          return null;
       }
 
-      /*
-       * Statement.isClosed().
-       */
-      if( "isClosed".equals(methodName)
-              && method.getParameterTypes().length == 0 )
+      // Statement.isClosed().
+      if( "isClosed".equals(methodName) && method.getParameterTypes().length == 0 )
       {
          return isClosed();
       }
 
-      /*
-       * Никогда не выпускаем raw Connection.
-       */
-      if( "getConnection".equals(methodName)
-              && method.getParameterTypes().length == 0 )
+      // Никогда не выпускаем jdbc-raw Connection. Всегда proxy.
+      if( "getConnection".equals(methodName) && method.getParameterTypes().length == 0 )
       {
          return connection.proxy();
       }
 
-      /*
-       * Current Statement ResultSet.
-       */
-      if( "getResultSet".equals(methodName)
-              && method.getParameterTypes().length == 0 )
+      // Current Statement ResultSet.
+      if( "getResultSet".equals(methodName) && method.getParameterTypes().length == 0 )
       {
-         ResultSet raw =
-                 (ResultSet) invokeRaw(
-                         method,
-                         args
-                 );
-
+         ResultSet raw = (ResultSet) invokeRaw( method, args );
          return wrapCursorResultSet(raw);
       }
 
-      /*
-       * Generated keys НЕ считаем cursor lifecycle.
-       */
-      if( "getGeneratedKeys".equals(methodName)
-              && method.getParameterTypes().length == 0 )
+      // Generated keys НЕ считаем cursor resultSet.
+      if( "getGeneratedKeys".equals(methodName) && method.getParameterTypes().length == 0 )
       {
-         return invokeRaw(
-                 method,
-                 args
-         );
+         return invokeRaw( method, args );
       }
 
-      /*
-       * getMoreResults()
-       * getMoreResults(int)
-       */
+      // getMoreResults(),  getMoreResults(int)
       if( "getMoreResults".equals(methodName) )
       {
-         return getMoreResults(
-                 method,
-                 args
-         );
+         return getMoreResults( method, args );
       }
 
-      /*
-       * unwrap(proxy-compatible interface)
-       * оставляет клиента внутри proxy.
-       */
-      if( "unwrap".equals(methodName)
-              && args != null
-              && args.length == 1 )
+      // unwrap(proxy-compatible interface)
+      if( "unwrap".equals(methodName) && args != null && args.length == 1 )
       {
-         Class<?> clazz =
-                 (Class<?>) args[0];
+         Class<?> clazz = (Class<?>) args[0];
 
          if( clazz.isInstance(proxy) )
             return clazz.cast(proxy);
       }
 
-      if( "isWrapperFor".equals(methodName)
-              && args != null
-              && args.length == 1 )
+      if( "isWrapperFor".equals(methodName) & args != null && args.length == 1 )
       {
-         Class<?> clazz =
-                 (Class<?>) args[0];
-
+         Class<?> clazz = (Class<?>) args[0];
          if( clazz.isInstance(proxy) )
             return true;
       }
 
-      /*
-       * PreparedStatement.setXXX(int,...)
-       */
-      if( isParameterSetter(
-              method,
-              args
-      ))
+      // PreparedStatement.setXXX(int,...)
+      if( isParameterSetter( method, args ))
       {
-         return setParameter(
-                 method,
-                 args
-         );
+         return setParameter( method, args );
       }
 
-      /*
-       * PreparedStatement.clearParameters().
-       */
-      if( prepared
-              && "clearParameters".equals(methodName)
-              && method.getParameterTypes().length == 0 )
+      // PreparedStatement.clearParameters().
+      if( prepared && "clearParameters".equals(methodName) && method.getParameterTypes().length == 0 )
       {
-         Object value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
-
+         Object value = invokeRaw( method, args );
          inParameters.clear();
 
-         /*
-          * OUT registrations clearParameters()
-          * не снимает.
-          */
+         // OUT registrations clearParameters() не снимает.
          return value;
       }
 
@@ -420,25 +315,13 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        *
        * Named OUT parameters пока просто делегируются.
        */
-      if( callable
-              && "registerOutParameter".equals(methodName)
-              && args != null
-              && args.length > 0
-              && args[0] instanceof Integer )
+      if( callable && "registerOutParameter".equals(methodName) && args != null && args.length > 0 && args[0] instanceof Integer )
       {
-         Object value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
+         Object value = invokeRaw( method, args );
 
-         int index =
-                 (Integer) args[0];
+         int index    = (Integer) args[0];
 
-         outParameters.put(
-                 index,
-                 outSqlType(args)
-         );
+         outParameters.put( index, outSqlType(args) );
 
          return value;
       }
@@ -447,15 +330,9 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        * CallableStatement.getObject(int,...)
        * только для зарегистрированного REF_CURSOR.
        */
-      if( isOutCursorGetter(
-              method,
-              args
-      ))
+      if( isOutCursorGetter( method, args ))
       {
-         return getOutCursor(
-                 method,
-                 args
-         );
+         return getOutCursor( method, args );
       }
 
       /*
@@ -468,17 +345,10 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        * ...
        */
       if( methodName.startsWith("execute") )
-      {
-         return execute(
-                 method,
-                 args
-         );
-      }
+          return execute( method, args );
 
-      return invokeRaw(
-              method,
-              args
-      );
+      // Прочие вызовы statement
+      return invokeRaw( method, args );
    }
 
 
@@ -493,8 +363,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
       fireBeforeExecute( methodName, executedSql );
 
-      boolean prepareOutCursors =
-              callable && !isBatchExecute(methodName);
+      boolean prepareOutCursors = callable && !isBatchExecute(methodName);
 
       /*
        * Любой новый CallableStatement execute*
@@ -505,7 +374,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        * но старые всё равно должны исчезнуть.
        */
       if( callable )
-         removePendingOutCursorSlots();
+          removePendingOutCursorSlots( );
 
       long started = System.nanoTime();
 
@@ -517,20 +386,15 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       }
       catch( Throwable throwable )
       {
-         long duration =
-                 System.nanoTime() - started;
+         long duration = System.nanoTime() - started;
 
          /*
           * Новых OUT cursor slots ещё нет:
           * они создаются только после успешного execute.
           *
-          * Для PostgreSQL SQLException здесь сначала
-          * восстанавливает aborted transaction через
-          * raw ROLLBACK.
+          * Для PostgreSQL SQLException здесь сначала восстанавливает aborted transaction через  raw ROLLBACK.
           */
-         connection.statementExecutionFailed(
-                 throwable
-         );
+         connection.statementExecutionFailed( throwable );
 
          /*
           * Driver мог закрыть предыдущий current cursor
@@ -538,9 +402,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
           */
          syncCursorResultSets();
 
-         /*
-          * Statement также мог оказаться закрыт.
-          */
+         // Statement также мог оказаться закрыт
          syncClosedState();
 
          /*
@@ -550,12 +412,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
           * выполнить raw SQL и при autoCommit=false открыть
           * новую read-only transaction.
           */
-         fireExecuteError(
-                 methodName,
-                 executedSql,
-                 duration,
-                 throwable
-         );
+         fireExecuteError( methodName, executedSql, duration, throwable );
 
          /*
           * Observation после rollback могла снова изменить
@@ -571,18 +428,16 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
          throw throwable;
       }
 
-      long duration =
-              System.nanoTime() - started;
+      long duration = System.nanoTime() - started;
 
       /*
        * Только успешный non-batch execute создаёт
        * потенциальные OUT REF_CURSOR.
        *
-       * Pending slots создаются до любого
-       * transactionStateChanged().
+       * Pending slots создаются до любого  transactionStateChanged().
        */
       if( prepareOutCursors )
-         prepareOutCursorSlots();
+          prepareOutCursorSlots();
 
       /*
        * Новый обычный cursor регистрируем
@@ -836,10 +691,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     * но только если positional OUT parameter
     * зарегистрирован как REF_CURSOR.
     */
-   private boolean isOutCursorGetter(
-           Method method,
-           Object[] args
-   )
+   private boolean isOutCursorGetter( Method method, Object[] args )
    {
       if( !callable )
          return false;
@@ -847,31 +699,19 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       if( !"getObject".equals(method.getName()) )
          return false;
 
-      if( args == null
-              || args.length == 0
-              || !(args[0] instanceof Integer) )
-      {
-         return false;
-      }
+      if( args == null || args.length == 0 || !(args[0] instanceof Integer) )
+          return false;
 
-      Integer sqlType =
-              outParameters.get(
-                      (Integer) args[0]
-              );
+      Integer sqlType = outParameters.get( (Integer) args[0] );
 
-      return isRefCursorType(
-              sqlType
-      );
+      return isRefCursorType( sqlType );
    }
 
 
    /** */
-   private static boolean isBatchExecute(
-           String methodName
-   )
+   private static boolean isBatchExecute( String methodName )
    {
-      return "executeBatch".equals(methodName)
-              || "executeLargeBatch".equals(methodName);
+      return "executeBatch".equals(methodName) || "executeLargeBatch".equals(methodName);
    }
 
 
@@ -879,34 +719,33 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
     * Перед новым execute создаём пустые
     * slots для зарегистрированных OUT REF_CURSOR.
     *
-    * Старые materialized cursor ResultSet продолжают
+    * Старые cursor ResultSet продолжают
     * жить в cursorResultSets независимо от нового execute.
     */
    private void prepareOutCursorSlots()
    {
       for( Map.Entry<Integer, Integer> entry : outParameters.entrySet() )
       {
-         if( isRefCursorType(entry.getValue()) )
+         if( isRefCursorType( entry.getValue() ) )
              cursorSlots.add( new CursorSlot( entry.getKey() ) );
       }
    }
 
 
+   /** */
    private CursorSlot findOutCursorSlot( int index )
    {
       for( CursorSlot slot : cursorSlots )
       {
-         if( slot.parameterIndex != null
-                 && slot.parameterIndex == index
-                 && slot.isPending() )
-         {
+         if( slot.parameterIndex != null && slot.parameterIndex == index && slot.isPending() )
             return slot;
-         }
       }
 
       return null;
    }
 
+
+   /** */
    private CursorSlot findCursorSlot(
            ResultSet resultSet
    )
@@ -914,12 +753,11 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       for( CursorSlot slot : cursorSlots )
       {
          if( slot.resultSet == resultSet )
-            return slot;
+             return slot;
       }
 
       return null;
    }
-
 
 
    /**
@@ -932,9 +770,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
       CursorSlot slot = findOutCursorSlot(index);
 
-      /*
-       * application реально читает OUT value.
-       */
+      // сначала реально читаем OUT value.
       Object value = invokeRaw( method, args );
 
       /*
@@ -961,9 +797,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
          if( current != null && current.proxy != null && !current.proxy.isLifecycleClosed() )
          {
-            /*
-             * Pending slot больше не нужен. Реальный cursor уже существует.
-             */
+            /* Pending slot cursor больше не нужен. Реальный cursor уже существует. */
             cursorSlots.remove(slot);
 
             current.proxy.fireOpen();
@@ -971,19 +805,12 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
             return current.proxy.proxy();
          }
 
-         CursorSlot filled =
-                 fillCursorSlot(
-                         slot,
-                         resultSet
-                 );
+         CursorSlot filled = fillCursorSlot( slot, resultSet );
 
          if( filled == null )
          {
-            /*
-             * Driver вернул уже закрытый ResultSet.
-             */
+            /* Driver вернул уже закрытый ResultSet. */
             cursorSlots.remove(slot);
-
             connection.transactionStateChanged();
 
             return value;
@@ -991,13 +818,11 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
          filled.proxy.fireOpen();
 
+         // Возвращаем proxy
          return filled.proxy.proxy();
       }
 
-      /*
-       * REF_CURSOR реально оказался null
-       * или driver вернул не ResultSet.
-       */
+      // REF_CURSOR реально оказался null, или driver вернул не ResultSet.
       cursorSlots.remove(slot);
 
       connection.transactionStateChanged();
@@ -1009,23 +834,16 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /**
     * Пользовательский Statement.getResultSet().
     */
-   private ResultSet wrapCursorResultSet(
-           ResultSet resultSet
-   )
+   private ResultSet wrapCursorResultSet( ResultSet resultSet )
    {
       if( resultSet == null )
-         return null;
+          return null;
 
-      CursorSlot slot =
-              registerCursorResultSet(
-                      resultSet
-              );
+      CursorSlot slot = registerCursorResultSet( resultSet );
 
-      /*
-       * Driver уже считает ResultSet закрытым.
-       */
+      // Driver уже считает ResultSet закрытым.
       if( slot == null )
-         return resultSet;
+          return resultSet;
 
       slot.proxy.fireOpen();
 
@@ -1069,71 +887,42 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /**
     * Заполнение CursorSlot.
     * <p>
-    * Здесь JdbcResultSetProxy создаётся обычным существующим способом и сам регистрирует
-    * ResultSet в JdbcLifecycleManager.
-    */
-   /**
     * Заполняет CursorSlot реальным ResultSet
     * и создаёт JdbcResultSetProxy.
     */
-   private CursorSlot fillCursorSlot(
-           CursorSlot slot,
-           ResultSet resultSet
-   )
+   private CursorSlot fillCursorSlot( CursorSlot slot, ResultSet resultSet )
    {
       if( slot == null )
-         throw new IllegalArgumentException(
-                 "slot is null"
-         );
+          throw new IllegalArgumentException( "slot is null" );
 
       if( resultSet == null )
-         throw new IllegalArgumentException(
-                 "resultSet is null"
-         );
+          throw new IllegalArgumentException( "resultSet is null" );
 
-      if( slot.resultSet != null
-              || slot.proxy != null )
-      {
-         throw new IllegalStateException(
-                 "CursorSlot already filled"
-         );
-      }
+      if( slot.resultSet != null || slot.proxy != null )
+          throw new IllegalStateException( "CursorSlot already filled" );
 
       if( isRawResultSetClosed(resultSet) )
-         return null;
+          return null;
 
       JdbcResultSetProxy handler;
 
       try
       {
-         handler =
-                 JdbcResultSetProxy.create(
-                         resultSet,
-                         this,
-                         lifecycle,
-                         eventBus
-                 );
+         handler = JdbcResultSetProxy.create( resultSet, this, lifecycle, eventBus );
       }
       catch( RuntimeException | Error ex )
       {
          /*
-          * Для OUT REF_CURSOR slot уже находится
-          * в cursorSlots.
-          *
+          * Для OUT REF_CURSOR slot уже находится в cursorSlots.
           * Для обычного ResultSet remove() просто no-op.
           */
          cursorSlots.remove(slot);
 
-         /*
-          * Proxy не создан — raw ResultSet наружу
-          * выпускать уже нельзя.
-          */
-         try
-         {
+         //  Proxy не создан — raw ResultSet наружу выпускать уже нельзя.
+         try {
             resultSet.close();
          }
-         catch( Throwable closeEx )
-         {
+         catch( Throwable closeEx ) {
             ex.addSuppressed(closeEx);
          }
 
@@ -1141,10 +930,8 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       }
 
       /*
-       * JdbcResultSetProxy.create() уже зарегистрировал
-       * реальный ResultSet в JdbcLifecycleManager.
-       *
-       * Только после этого pending slot становится filled.
+       * JdbcResultSetProxy.create() уже зарегистрировал реальный ResultSet в JdbcLifecycleManager.
+       * Только после этого pending slot становится заполненным.
        */
       slot.resultSet = resultSet;
       slot.proxy     = handler;
@@ -1156,8 +943,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /**
     * ResultSetProxy сообщает owner-у,
     * что его lifecycle закончился.
-    *
-    * Identity slot/proxy защищает от stale handler.
     */
    void cursorResultSetClosed( JdbcResultSetProxy resultSet )
    {
@@ -1171,43 +956,32 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
 
    /**
-    * Синхронизирует ResultSet, которые driver закрыл
-    * без вызова нашего ResultSetProxy.close().
+    * Синхронизирует ResultSet, которые driver закрыл без вызова нашего ResultSetProxy.close().
     */
    private void syncCursorResultSets()
    {
       if( cursorSlots.isEmpty() )
-         return;
+          return;
 
-      ArrayList<CursorSlot> snapshot =
-              new ArrayList<>(
-                      cursorSlots
-              );
+      ArrayList<CursorSlot> snapshot = new ArrayList<>( cursorSlots );
 
       for( CursorSlot slot : snapshot )
       {
          /*
-          * Pending OUT REF_CURSOR.
-          * Raw ResultSet пока нет.
+          * Pending OUT REF_CURSOR. Raw ResultSet пока нет.
           */
          if( slot.proxy == null )
-            continue;
+             continue;
 
-         JdbcResultSetProxy resultSet =
-                 slot.proxy;
+         JdbcResultSetProxy resultSet = slot.proxy;
 
          if( resultSet.isLifecycleClosed() )
          {
-            cursorResultSetClosed(
-                    resultSet
-            );
-
+            cursorResultSetClosed( resultSet );
             continue;
          }
 
-         if( isRawResultSetClosed(
-                 slot.resultSet
-         ))
+         if( isRawResultSetClosed( slot.resultSet ))
          {
             resultSet.closedByStatement();
          }
@@ -1218,8 +992,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /**
     * Statement закрывается.
     *
-    * Materialized ResultSet проходят обычный
-    * JdbcResultSetProxy lifecycle.
+    * ResultSet проходят обычный JdbcResultSetProxy lifecycle.
     *
     * Pending OUT slots просто исчезают:
     * real ResultSet для них ещё не существовало.
@@ -1229,10 +1002,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       if( cursorSlots.isEmpty() )
          return;
 
-      ArrayList<CursorSlot> snapshot =
-              new ArrayList<>(
-                      cursorSlots
-              );
+      ArrayList<CursorSlot> snapshot = new ArrayList<>( cursorSlots );
 
       /*
        * Сначала очищаем owner collection.
@@ -1247,21 +1017,18 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       for( CursorSlot slot : snapshot )
       {
          if( slot.proxy != null )
-            slot.proxy.closedByStatement();
+             slot.proxy.closedByStatement();
       }
    }
 
-   /**
-    * Явный Statement.close().
-    */
-   private void close()
-           throws Throwable
+
+   /** Явный Statement.close(). */
+   private void close() throws Throwable
    {
       if( closed )
-         return;
+          return;
 
-      try
-      {
+      try {
          statement.close();
       }
       catch( Throwable throwable )
@@ -1272,11 +1039,9 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
           */
          syncCursorResultSets();
 
-         /*
-          * Statement мог физически закрыться.
-          */
+         // Statement мог физически закрыться.
          if( isRawStatementClosed() )
-            statementClosed();
+             statementClosed();
 
          throw throwable;
       }
@@ -1286,7 +1051,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
 
    /**
-    * Точка завершения Statement lifecycle proxy.
+    * Точка завершения Statement proxy.
     */
    private void statementClosed()
    {
@@ -1295,6 +1060,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
       closed = true;
 
+      // защита от циклов
       closingResultSets = true;
 
       try
@@ -1305,8 +1071,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
          fireClose();
       }
-      finally
-      {
+      finally {
          closingResultSets = false;
       }
 
@@ -1317,47 +1082,43 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /**
     * Statement.isClosed().
     */
-   private boolean isClosed()
-           throws SQLException
+   private boolean isClosed() throws SQLException
    {
       if( closed )
          return true;
 
-      boolean rawClosed =
-              statement.isClosed();
+      boolean rawClosed = statement.isClosed();
 
       if( rawClosed )
-         statementClosed();
+          statementClosed();
 
       return rawClosed;
    }
 
 
    /**
-    * Синхронизация фактического состояния
-    * raw Statement.
+    * Синхронизация фактического состояния raw Statement.
     */
    void syncClosedState()
    {
       if( closed )
-         return;
+          return;
 
       if( isRawStatementClosed() )
-         statementClosed();
+          statementClosed();
    }
 
 
    /**
     * Полное завершение transaction:
-    *
+    * <p>
     * - COMMIT
     * - ROLLBACK
     * - setAutoCommit(true)
     *
     * Pending REF_CURSOR больше не существует.
     *
-    * Materialized ResultSet синхронизируем
-    * по фактическому состоянию driver-а.
+    * ResultSet синхронизируем по фактическому состоянию driver-а.
     */
    void transactionCompleted()
    {
@@ -1372,13 +1133,10 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    }
 
 
+   /** */
    private void removePendingOutCursorSlots()
    {
-      for( Iterator<CursorSlot> it = cursorSlots.iterator(); it.hasNext(); )
-      {
-         if( it.next().isPending() )
-             it.remove();
-      }
+      cursorSlots.removeIf( CursorSlot::isPending) ;
    }
 
    /** */
@@ -1390,9 +1148,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       }
       catch( SQLException ignored )
       {
-         /*
-          * Считаем Statement открытым.
-          */
+         /* Считаем Statement открытым. */
          return false;
       }
    }
@@ -1405,9 +1161,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
          return resultSet.isClosed();
       }
       catch( SQLException ignored ) {
-         /*
-          * Считаем ResultSet открытым.
-          */
+         /* Считаем ResultSet открытым. */
          return false;
       }
    }
@@ -1435,67 +1189,39 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
    /**
     * OUT values собираются только для trace.
-    *
-    * КРИТИЧНО:
-    *
-    * REF_CURSOR здесь НИКОГДА не читаем
-    * через CallableStatement.getObject().
+    * <p>
+    * REF_CURSOR здесь НИКОГДА не читаем через CallableStatement.getObject().
     */
    private Map<Integer, Object> outParameterValues()
    {
-      if( !callable
-              || outParameters.isEmpty() )
-      {
+      if( !callable || outParameters.isEmpty() )
          return Collections.emptyMap();
-      }
 
-      Map<Integer, Object> result =
-              new TreeMap<>();
+      Map<Integer, Object> result = new TreeMap<>();
 
-      CallableStatement callableStatement =
-              (CallableStatement) statement;
+      CallableStatement callableStatement = (CallableStatement) statement;
 
-      for( Map.Entry<Integer, Integer> entry
-              : outParameters.entrySet() )
+      for( Map.Entry<Integer, Integer> entry : outParameters.entrySet() )
       {
-         Integer index =
-                 entry.getKey();
+         Integer index = entry.getKey();
 
          if( hiddenParameters.contains(index) )
          {
-            result.put(
-                    index,
-                    HIDDEN_VALUE
-            );
-
+            result.put( index, HIDDEN_VALUE );
             continue;
          }
 
-         if( isRefCursorType(
-                 entry.getValue()
-         ))
+         if( isRefCursorType( entry.getValue() ))
          {
-            result.put(
-                    index,
-                    REF_CURSOR_VALUE
-            );
-
+            result.put( index, REF_CURSOR_VALUE );
             continue;
          }
 
-         try
-         {
-            result.put(
-                    index,
-                    callableStatement.getObject(index)
-            );
+         try {
+            result.put( index, callableStatement.getObject(index) );
          }
-         catch( SQLException ignored )
-         {
-            /*
-             * Diagnostics не должны ломать
-             * успешный execute.
-             */
+         catch( SQLException ignored ) {
+            /* Diagnostics не должны ломать успешный execute. */
          }
       }
 
@@ -1504,18 +1230,10 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
 
    /** */
-   private Object invokeRaw(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object invokeRaw( Method method, Object[] args ) throws Throwable
    {
-      try
-      {
-         return method.invoke(
-                 statement,
-                 args
-         );
+      try {
+         return method.invoke( statement, args );
       }
       catch( InvocationTargetException ex )
       {
@@ -1525,12 +1243,9 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
 
 
    /** */
-   private boolean hasStatementListeners()
+   private boolean hasStatementListeners( )
    {
-      return eventBus != null
-              && eventBus.hasListeners(
-              JdbcStatementEvent.class
-      );
+      return eventBus != null && eventBus.hasListeners( JdbcStatementEvent.class );
    }
 
 
@@ -1538,87 +1253,58 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    void fireOpen()
    {
       if( !hasStatementListeners() )
+          return;
+      eventBus.fire( JdbcStatementEvent.open( proxy, sql, traceIgnored ) );
+   }
+
+
+   /** */
+   private void fireBeforeExecute( String methodName, String sql )
+   {
+      if( !hasStatementListeners() )
+         return;
+      eventBus.fire( JdbcStatementEvent.beforeExecute( proxy, methodName, sql, inParameters, traceIgnored ) );
+   }
+
+
+   /** */
+   private void fireAfterExecute( String methodName, String sql, long durationNanos )
+   {
+      if( !hasStatementListeners() )
          return;
 
+      Map<Integer, Object> out = outParameterValues();
+
       eventBus.fire(
-              JdbcStatementEvent.open(
-                      proxy,
-                      sql,
-                      traceIgnored
-              )
+           JdbcStatementEvent.afterExecute(
+                   proxy,
+                   methodName,
+                   sql,
+                   inParameters,
+                   out,
+                   durationNanos,
+                   traceIgnored
+           )
       );
    }
 
 
    /** */
-   private void fireBeforeExecute(
-           String methodName,
-           String sql
-   )
+   private void fireExecuteError( String methodName, String sql, long durationNanos, Throwable throwable )
    {
       if( !hasStatementListeners() )
          return;
 
-      eventBus.fire(
-              JdbcStatementEvent.beforeExecute(
-                      proxy,
-                      methodName,
-                      sql,
-                      inParameters,
-                      traceIgnored
-              )
-      );
-   }
-
-
-   /** */
-   private void fireAfterExecute(
-           String methodName,
-           String sql,
-           long durationNanos
-   )
-   {
-      if( !hasStatementListeners() )
-         return;
-
-      Map<Integer, Object> out =
-              outParameterValues();
-
-      eventBus.fire(
-              JdbcStatementEvent.afterExecute(
-                      proxy,
-                      methodName,
-                      sql,
-                      inParameters,
-                      out,
-                      durationNanos,
-                      traceIgnored
-              )
-      );
-   }
-
-
-   /** */
-   private void fireExecuteError(
-           String methodName,
-           String sql,
-           long durationNanos,
-           Throwable throwable
-   )
-   {
-      if( !hasStatementListeners() )
-         return;
-
-      eventBus.fire(
-              JdbcStatementEvent.executeError(
-                      proxy,
-                      methodName,
-                      sql,
-                      inParameters,
-                      durationNanos,
-                      throwable,
-                      traceIgnored
-              )
+      eventBus.fire (
+        JdbcStatementEvent.executeError (
+          proxy,
+          methodName,
+          sql,
+          inParameters,
+          durationNanos,
+          throwable,
+          traceIgnored
+        )
       );
    }
 
@@ -1629,13 +1315,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
       if( !hasStatementListeners() )
          return;
 
-      eventBus.fire(
-              JdbcStatementEvent.close(
-                      proxy,
-                      sql,
-                      traceIgnored
-              )
-      );
+      eventBus.fire( JdbcStatementEvent.close( proxy, sql, traceIgnored ) );
    }
 
 
@@ -1646,7 +1326,6 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
          return;
 
       syncCursorResultSets();
-
       syncClosedState();
    }
 
@@ -1664,15 +1343,9 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /** */
    void cursorStateChanged()
    {
-      /*
-       * Во время Statement.close()
-       * ResultSet-ы закрываются пачкой.
-       */
-      if( closingResultSets
-              || getMoreResultsMode )
-      {
-         return;
-      }
+      // Во время Statement.close() ResultSet-ы закрываются пачкой
+      if( closingResultSets || getMoreResultsMode )
+          return;
 
       connection.transactionStateChanged();
    }

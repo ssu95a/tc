@@ -365,51 +365,31 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Явный Connection.commit().
     */
-   private Object commit(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object commit( Method method, Object[] args ) throws Throwable
    {
       suspendAutoFinish();
 
       try
       {
-         Object value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
-
+         Object value = invokeRaw( method, args );
          transactionCompleted();
 
-         fire(
-                 EventType.TRANSACTION_COMMIT,
-                 EventPhase.AFTER,
-                 null
-         );
-
+         fire( EventType.TRANSACTION_COMMIT, EventPhase.AFTER, null );
          return value;
       }
       catch( Throwable throwable )
       {
          /*
           * COMMIT мог частично изменить JDBC state,
-          * но transactionCompleted() вызывать нельзя:
-          * факт завершения transaction не подтверждён.
+          * но transactionCompleted() не зовем: факт завершения transaction не подтверждён.
           */
          syncStatements();
 
-         fire(
-                 EventType.TRANSACTION_COMMIT,
-                 EventPhase.ERROR,
-                 throwable
-         );
+         fire( EventType.TRANSACTION_COMMIT, EventPhase.ERROR, throwable );
 
          throw throwable;
       }
-      finally
-      {
+      finally {
          resumeAutoFinish();
       }
    }
@@ -418,49 +398,30 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Явный Connection.rollback().
     */
-   private Object rollback(
-           Method method,
-           Object[] args
-   )
-           throws Throwable
+   private Object rollback( Method method, Object[] args ) throws Throwable
    {
       suspendAutoFinish();
 
       try
       {
-         Object value =
-                 invokeRaw(
-                         method,
-                         args
-                 );
+         Object value = invokeRaw( method, args );
 
          transactionCompleted();
 
-         fire(
-                 EventType.TRANSACTION_ROLLBACK,
-                 EventPhase.AFTER,
-                 null
-         );
+         fire( EventType.TRANSACTION_ROLLBACK, EventPhase.AFTER, null );
 
          return value;
       }
       catch( Throwable throwable )
       {
-         /*
-          * Driver мог частично изменить JDBC state.
-          */
+
+         // Driver мог частично изменить JDBC state.
          syncStatements();
 
-         fire(
-                 EventType.TRANSACTION_ROLLBACK,
-                 EventPhase.ERROR,
-                 throwable
-         );
-
+         fire( EventType.TRANSACTION_ROLLBACK, EventPhase.ERROR, throwable );
          throw throwable;
       }
-      finally
-      {
+      finally {
          resumeAutoFinish();
       }
    }
@@ -468,8 +429,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
    /**
     * Connection.rollback(Savepoint).
     */
-   private Object rollbackSavepoint( Method method, Object[] args )
-           throws Throwable
+   private Object rollbackSavepoint( Method method, Object[] args ) throws Throwable
    {
       suspendAutoFinish();
 
@@ -542,9 +502,8 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
          Object value = invokeRaw( method, args );
 
-         if( autoCommit ) {
-            transactionCompleted();
-         }
+         if( autoCommit )
+             transactionCompleted();
 
          return value;
       }
@@ -759,9 +718,7 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
       }
       catch( SQLException ignored )
       {
-         /*
-          * считаем Connection ещё открытым.
-          */
+         // считаем Connection ещё открытым.
          return false;
       }
    }
