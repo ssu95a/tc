@@ -886,4 +886,38 @@ public final class JdbcConnectionProxy extends JdbcObjectProxy
 
       return ((JdbcConnectionProxy) handler).savepoints.find(name);
    }
+
+   /** */
+   public static boolean isIdenticalConnection( Connection c1, Connection c2 )
+   {
+         if( c1 == null || c2 == null )
+            return false;
+
+         if( c1 == c2 )
+            return true;
+
+         JdbcConnectionProxy firstProxy = getProxy(c1);
+
+         if( firstProxy != null && firstProxy.connection == c2 )
+             return true;
+
+         JdbcConnectionProxy secondProxy = getProxy(c2);
+
+         if( secondProxy != null && secondProxy.connection == c1 )
+             return true;
+
+         return firstProxy != null && secondProxy != null && firstProxy.connection == secondProxy.connection;
+
+   }
+
+   /** */
+   private static JdbcConnectionProxy getProxy(Connection connection )
+   {
+      if( !Proxy.isProxyClass(connection.getClass()) )
+          return null;
+
+      InvocationHandler handler = Proxy.getInvocationHandler(connection);
+
+      return handler instanceof JdbcConnectionProxy ? (JdbcConnectionProxy) handler : null;
+   }
 }

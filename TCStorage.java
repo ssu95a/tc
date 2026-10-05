@@ -4,9 +4,6 @@ import ru.inversion.utils.lstn.IListenerManConsumer;
 import ru.inversion.utils.lstn.ListenerManFactory;
 
 import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -111,18 +108,8 @@ public class TCStorage implements AutoCloseable
 
         for( TaskContext tc : snapshot() )
         {
-            try
-            {
-                Connection tcConnection = tc.getConnection();
-
-                if( tcConnection == connection )
-                    return tc;
-
-                if( tcConnection.unwrap(Connection.class) == connection )
-                    return tc;
-            }
-            catch( SQLException | IllegalStateException ignored )
-            { }
+            if( tc.ownsConnection(connection) )
+                return tc;
         }
 
         return null;

@@ -467,4 +467,10 @@ public class TaskContext implements AutoCloseable {
     {
         return SqlDialectFactory.from(this);
     }
+
+    /** */
+    boolean ownsConnection( Connection connection )
+    {
+        return JdbcConnectionProxy.isIdenticalConnection( this.connection, connection );
+    }
 }

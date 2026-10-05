@@ -645,18 +645,12 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
    /**
     * SQL type из registerOutParameter(int,...).
     */
-   private static Integer outSqlType(
-           Object[] args
-   )
+   private static Integer outSqlType( Object[] args )
    {
-      if( args == null
-              || args.length < 2 )
-      {
+      if( args == null || args.length < 2 )
          return null;
-      }
 
-      Object type =
-              args[1];
+      Object type = args[1];
 
       if( type instanceof Integer )
          return (Integer) type;
@@ -665,10 +659,7 @@ public final class JdbcStatementProxy extends JdbcObjectProxy
        * JDBC 4.2 overload.
        */
       if( type instanceof SQLType )
-      {
-         return ((SQLType) type)
-                 .getVendorTypeNumber();
-      }
+         return ((SQLType) type) .getVendorTypeNumber();
 
       return null;
    }
