@@ -141,45 +141,61 @@ public final class JdbcServerOutputTracer implements JdbcEventListener<JdbcState
    /**
     * PostgreSQL RAISE DEBUG / NOTICE, пришедшие через JDBC SQLWarning chain.
     */
-   private void traceWarnings( JdbcStatementEvent event )
+   private void traceWarnings(
+           JdbcStatementEvent event
+   )
    {
       if( !isEnabled(EventType.NOTICE) )
-          return;
+         return;
 
-      Object source = event.getSource();
+      Object source =
+              event.getSource();
 
       if( !(source instanceof Statement) )
          return;
 
       try
       {
-         SQLWarning warning = ((Statement) source).getWarnings();
+         Statement statement =
+                 (Statement) source;
 
-         StringBuilder text = null;
+         SQLWarning warning =
+                 statement.getWarnings();
 
-         while( warning != null )
-         {
-            String message = warning.getMessage();
-
-            if( !S.isNullOrEmpty(message) )
-            {
-               if( text == null )
-                   text = new StringBuilder(message);
-               else
-                   text.append('\n').append(message);
-            }
-
-            warning = warning.getNextWarning();
-         }
-
+         /*
+          * --lti скрывает пользовательский вывод.
+          *
+          * Warning chain не копируем в дополнительный
+          * StringBuilder и не создаём trace events.
+          */
          if( event.isTraceIgnored() )
             return;
 
-         if( text != null )
-             eventBus.fire( JdbcMessageEvent.notice( source, text.toString() ) );
+         while( warning != null )
+         {
+            String message =
+                    warning.getMessage();
+
+            if( !S.isNullOrEmpty(message) )
+            {
+               eventBus.fire(
+                       JdbcMessageEvent.notice(
+                               source,
+                               message
+                       )
+               );
+            }
+
+            warning =
+                    warning.getNextWarning();
+         }
       }
-      catch( SQLException ignored ) {
-         /* Diagnostics не должны влиять на application JDBC. */
+      catch( SQLException ignored )
+      {
+         /*
+          * Diagnostics не должны влиять
+          * на application JDBC.
+          */
       }
    }
 

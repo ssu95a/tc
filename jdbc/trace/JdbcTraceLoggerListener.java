@@ -38,12 +38,11 @@ public final class JdbcTraceLoggerListener implements JdbcTraceListener
       }
    }
 
-
-   private static boolean isError(JdbcTraceEvent event)
+   /** */
+   private static boolean isError( JdbcTraceEvent event )
    {
-      return event.hasJdbcEvent() && event.jdbcEvent().throwable() != null;
+      return event != null && event.type() == JdbcTraceType.ERROR;
    }
-
 
    /** */
    private static String eventToString( JdbcTraceEvent event )
